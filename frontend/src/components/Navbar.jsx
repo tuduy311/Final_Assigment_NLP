@@ -16,6 +16,7 @@ export default function Navbar() {
               src={user.picture}
               alt={user.name}
               className="w-10 h-10 rounded-full"
+              referrerPolicy="no-referrer"
             />
           )}
           <div>

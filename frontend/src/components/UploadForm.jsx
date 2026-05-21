@@ -31,8 +31,17 @@ export const UploadForm = ({ onSubmit, isLoading }) => {
   }
 
   const isAudioFile = (file) => {
-    const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp3', 'audio/m4a']
-    return audioTypes.includes(file.type) || /\.(mp3|wav|ogg|m4a)$/i.test(file.name)
+    const audioTypes = [
+      'audio/mpeg',
+      'audio/wav',
+      'audio/ogg',
+      'audio/mp3',
+      'audio/m4a',
+      'audio/flac',
+      'audio/webm',
+      'audio/x-m4a'
+    ]
+    return audioTypes.includes(file.type) || /\.(mp3|wav|ogg|m4a|flac|webm)$/i.test(file.name)
   }
 
   const handleFileInput = (e) => {

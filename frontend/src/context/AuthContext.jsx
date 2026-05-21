@@ -3,39 +3,45 @@ import React, { createContext, useContext, useState, useCallback } from 'react'
 const AuthContext = createContext(null)
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null)
-  const [token, setToken] = useState(localStorage.getItem('authToken'))
-  const [isLoading, setIsLoading] = useState(false)
-
-  const login = useCallback((credentialResponse) => {
+  const [accessToken, setAccessToken] = useState(localStorage.getItem('googleAccessToken'))
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user')
     try {
-     const token = credentialResponse.credential
-    
-    // Properly decode base64 with UTF-8 support
-    const base64Url = token.split('.')[1]
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    )
-    const decoded = JSON.parse(jsonPayload)
-      
-      setUser({
-        id: decoded.sub,
-        email: decoded.email,
-        name: decoded.name,
-       // picture: decoded.picture,
+      return savedUser ? JSON.parse(savedUser) : null
+    } catch (e) {
+      return null
+    }
+  })
+
+  /**
+   * Được gọi sau khi useGoogleLogin thành công.
+   * tokenResponse chứa: access_token, scope, expires_in, ...
+   * Cần decode id_token riêng nếu muốn lấy thông tin user.
+   */
+  const login = useCallback(async (tokenResponse) => {
+    try {
+      const token = tokenResponse.access_token
+
+      // Lấy thông tin user từ Google UserInfo API bằng access_token
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${token}` },
       })
-      setToken(token)
-      localStorage.setItem('authToken', token)
-      localStorage.setItem('user', JSON.stringify({
-        id: decoded.sub,
-        email: decoded.email,
-        name: decoded.name,
-        //picture: decoded.picture,
-      }))
+
+      if (!res.ok) throw new Error('Không lấy được thông tin người dùng từ Google')
+
+      const profile = await res.json()
+
+      const userData = {
+        id: profile.sub,
+        email: profile.email,
+        name: profile.name,
+        picture: profile.picture,
+      }
+
+      setUser(userData)
+      setAccessToken(token)
+      localStorage.setItem('googleAccessToken', token)
+      localStorage.setItem('user', JSON.stringify(userData))
     } catch (error) {
       console.error('Login error:', error)
       throw error
@@ -44,17 +50,16 @@ export const AuthProvider = ({ children }) => {
 
   const logout = useCallback(() => {
     setUser(null)
-    setToken(null)
-    localStorage.removeItem('authToken')
+    setAccessToken(null)
+    localStorage.removeItem('googleAccessToken')
     localStorage.removeItem('user')
   }, [])
 
-  const isAuthenticated = !!user && !!token
+  const isAuthenticated = !!user && !!accessToken
 
   const value = {
     user,
-    token,
-    isLoading,
+    accessToken,
     isAuthenticated,
     login,
     logout,

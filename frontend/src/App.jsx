@@ -1,17 +1,18 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import UploadForm from './components/UploadForm'
 import ResultView from './components/ResultView'
 import ErrorMessage from './components/ErrorMessage'
 import Loader from './components/Loader'
 import Login from './components/Login'
 import Navbar from './components/Navbar'
-import { processMeeting } from './services/api'
+import { processMeeting, extractTasks } from './services/api'
 import { useAuth } from './context/AuthContext'
 import './index.css'
 
 function App() {
   const { isAuthenticated } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
+  const [loadingStep, setLoadingStep] = useState('') // mô tả bước đang xử lý
   const [error, setError] = useState(null)
   const [results, setResults] = useState(null)
 
@@ -20,17 +21,48 @@ function App() {
     setError(null)
 
     try {
-      const data = await processMeeting(file)
-      setResults(data)
+      // ── BƯỚC 1: Transcribe + Summary ──────────────────────────────
+      setLoadingStep('Đang chuyển giọng nói thành văn bản và tóm tắt...')
+      const processData = await processMeeting(file)
+
+      // Lấy transcript text từ transcript_result
+      const transcriptText = processData.transcript_result?.text || ''
+      const summary = processData.summary_result?.summary || ''
+
+      if (!transcriptText.trim()) {
+        setError('Không nhận diện được giọng nói trong file audio. Vui lòng thử lại với file khác.')
+        return
+      }
+
+      // ── BƯỚC 2: Extract Action Items ───────────────────────────────
+      setLoadingStep('Đang rút trích action items...')
+      let actionItems = []
+      try {
+        const tasksData = await extractTasks(transcriptText)
+        actionItems = tasksData.action_items || []
+      } catch (taskErr) {
+        // Không dừng app nếu extract tasks thất bại, chỉ log lỗi
+        console.warn('Không thể rút trích action items:', taskErr)
+      }
+
+      // ── Normalize data để truyền xuống ResultView ─────────────────
+      setResults({
+        transcript:   transcriptText,
+        summary:      summary,
+        decisions:    [], // Model Service chưa hỗ trợ endpoint decisions riêng
+        action_items: actionItems,
+      })
     } catch (err) {
       const errorMessage =
+        err.response?.data?.detail ||
         err.response?.data?.message ||
         err.message ||
-        'Failed to process the meeting. Please try again.'
+        'Xử lý thất bại. Vui lòng thử lại.'
       setError(errorMessage)
       console.error('API Error:', err)
     } finally {
       setIsLoading(false)
+      setLoadingStep('')
     }
   }
 
@@ -70,7 +102,7 @@ function App() {
           {/* Content */}
           <div className="bg-white rounded-xl shadow-lg p-8">
             {isLoading ? (
-              <Loader />
+              <Loader message={loadingStep} />
             ) : results ? (
               <ResultView data={results} onReset={handleReset} />
             ) : (
@@ -81,7 +113,7 @@ function App() {
           {/* Footer */}
           <div className="text-center mt-8 text-gray-600 text-sm">
             <p>
-              Supported formats: MP3, WAV, OGG, M4A • Maximum file size: 100MB
+              Supported formats: MP3, WAV, OGG, M4A, FLAC, WEBM • Maximum file size: 100MB
             </p>
           </div>
         </div>
@@ -91,3 +123,4 @@ function App() {
 }
 
 export default App
+

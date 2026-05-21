@@ -65,7 +65,7 @@ npm run build
 npm run preview
 ```
 
-The app runs on `http://localhost:3000` with API proxy to `http://localhost:5000`.
+The app runs on `http://localhost:3000` with API proxy to `http://localhost:8000`.
 
 ## 🔌 API Integration
 
@@ -108,7 +108,7 @@ Or update the proxy in `vite.config.js`:
 ```javascript
 proxy: {
   '/api': {
-    target: 'http://localhost:5000',  // Your backend URL
+    target: 'http://localhost:8000',  // Your backend URL
   }
 }
 ```
@@ -182,8 +182,8 @@ npm run build  # Creates optimized dist/ folder
 ## 📝 Notes
 
 - Supports audio files up to 100MB
-- Accepts MP3, WAV, OGG, M4A formats
-- API request timeout: 30 seconds
+- Accepts MP3, WAV, OGG, M4A, FLAC, WEBM formats
+- API request timeout: 11 minutes (660,000 ms) to support transcription & analysis buffering
 - Cross-origin requests handled via Vite proxy
 
 ## 📄 License
