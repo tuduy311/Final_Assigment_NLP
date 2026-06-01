@@ -32,29 +32,52 @@ api.interceptors.response.use((response) => {
 })
 
 /**
- * Bước 1: Upload audio → transcribe + summary
- * Field name phải là 'file' (khớp với FastAPI UploadFile = File(...))\
- * Endpoint: POST /api/v1/audio/process-audio
+ * Bước 1: Upload audio
+ * Endpoint: POST /api/v1/audio/upload
  */
-export const processMeeting = async (audioFile) => {
+export const uploadAudio = async (audioFile) => {
   const formData = new FormData()
   formData.append('file', audioFile)
 
-  const response = await api.post('/v1/audio/process-audio', formData, {
+  const response = await api.post('/v1/audio/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   })
-
   return response.data
 }
 
 /**
- * Bước 2: Gửi transcript để rút trích action items
- * Endpoint: POST /api/v1/audio/extract-tasks
+ * Bước 2: Generate Transcript
+ * Endpoint: POST /api/v1/audio/{audioId}/transcribe
  */
-export const extractTasks = async (text) => {
-  const response = await api.post('/v1/audio/extract-tasks', { text })
+export const generateTranscript = async (audioId) => {
+  const response = await api.post(`/v1/audio/${audioId}/transcribe`)
+  return response.data
+}
+
+/**
+ * Bước 3: Detect Speakers (Diarization)
+ * Endpoint: POST /api/v1/audio/{audioId}/diarize
+ */
+export const detectSpeakers = async (audioId) => {
+  const response = await api.post(`/v1/audio/${audioId}/diarize`)
+  return response.data
+}
+
+/**
+ * Bước 4: Generate Summary
+ * Endpoint: POST /api/v1/audio/summary/generate
+ */
+export const generateSummary = async (text, audioId = null) => {
+  const payload = { text }
+  if (audioId) payload.audio_id = audioId
+  const response = await api.post('/v1/audio/summary/generate', payload)
+  return response.data
+}
+
+export const deleteWorkspace = async (audioId) => {
+  const response = await api.delete(`/v1/audio/${audioId}`)
   return response.data
 }
 
@@ -74,6 +97,16 @@ export const createCalendarEvents = async (events) => {
  */
 export const getCalendarEvents = async () => {
   const response = await api.get('/v1/calendar/events')
+  return response.data
+}
+
+export const getHistory = async () => {
+  const response = await api.get('/v1/audio/history')
+  return response.data
+}
+
+export const getAudioResults = async (audioId) => {
+  const response = await api.get(`/v1/audio/${audioId}/results`)
   return response.data
 }
 

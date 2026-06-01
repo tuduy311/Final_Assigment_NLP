@@ -46,7 +46,7 @@ cd backend
 # Follow backend-specific setup in backend/README.md
 ```
 
-Backend should run on: `http://localhost:5000`
+Backend should run on: `http://localhost:8000`
 
 ## 📦 Technologies
 
@@ -94,8 +94,8 @@ Content-Type: multipart/form-data
 ## 🔗 Development Workflow
 
 1. **Frontend** listens on port 3000
-2. **Backend** listens on port 5000
-3. Frontend proxies API calls to `/api` → `http://localhost:5000`
+2. **Backend** listens on port 8000
+3. Frontend proxies API calls to `/api` → `http://localhost:8000`
 4. Edit `frontend/vite.config.js` if backend URL changes
 
 ## 📝 Notes
