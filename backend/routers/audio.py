@@ -132,9 +132,13 @@ async def generate_transcript(audio_id: str):
                 
             return result_stt
             
+    except HTTPException:
+        raise
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail=f"Lỗi kết nối Model Service: {exc}")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{audio_id}/diarize")
@@ -183,9 +187,13 @@ async def detect_speakers(audio_id: str):
                 
             return result_diarization
             
+    except HTTPException:
+        raise
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail=f"Lỗi kết nối Model Service: {exc}")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/summary/generate")
@@ -242,10 +250,10 @@ async def generate_summary(payload: SummaryRequest):
                         
             return result_json
             
-    except httpx.RequestError as exc:
-        raise HTTPException(status_code=503, detail=f"Lỗi kết nối Model Service: {exc}")
     except HTTPException:
         raise
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail=f"Lỗi kết nối Model Service: {exc}")
     except Exception as e:
         import traceback
         traceback.print_exc()

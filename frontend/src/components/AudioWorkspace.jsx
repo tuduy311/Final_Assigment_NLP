@@ -190,12 +190,10 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
                 <h4 className="text-lg font-semibold mb-2">Summary</h4>
                 <p className="whitespace-pre-wrap text-gray-700">{summaryResult.summary}</p>
               </div>
-              {summaryResult.action_items && summaryResult.action_items.length > 0 && (
-                <div>
-                  <h4 className="text-lg font-semibold mb-2">Action Items</h4>
-                  <ActionItemTable items={summaryResult.action_items} />
-                </div>
-              )}
+              <div>
+                <h4 className="text-lg font-semibold mb-2">Action Items</h4>
+                <ActionItemTable items={summaryResult.action_items || []} />
+              </div>
             </div>
           </ResultSection>
         )}

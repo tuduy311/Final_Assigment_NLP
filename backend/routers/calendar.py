@@ -50,6 +50,17 @@ def _parse_deadline(deadline_str: str) -> Optional[dict]:
     if not deadline_str or not deadline_str.strip():
         return None
 
+    deadline_str = deadline_str.strip()
+
+    # Thử parse ISO format trước (hỗ trợ .000Z từ frontend JS)
+    try:
+        # Nếu có Z ở cuối, thay bằng +00:00 để fromisoformat parse được (cho python < 3.11)
+        iso_str = deadline_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(iso_str)
+        return {"dateTime": dt.isoformat(), "timeZone": "Asia/Ho_Chi_Minh"}
+    except ValueError:
+        pass
+
     formats = [
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%d %H:%M",
@@ -60,7 +71,7 @@ def _parse_deadline(deadline_str: str) -> Optional[dict]:
 
     for fmt in formats:
         try:
-            dt = datetime.strptime(deadline_str.strip(), fmt)
+            dt = datetime.strptime(deadline_str, fmt)
             # Nếu chỉ có ngày (không có giờ), dùng all-day event
             if fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
                 return {"date": dt.strftime("%Y-%m-%d")}
