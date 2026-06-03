@@ -69,10 +69,19 @@ export const detectSpeakers = async (audioId) => {
  * Bước 4: Generate Summary
  * Endpoint: POST /api/v1/audio/summary/generate
  */
-export const generateSummary = async (text, audioId = null) => {
+export const generateSummaryText = async (text, audioId = null, userName = null) => {
   const payload = { text }
   if (audioId) payload.audio_id = audioId
-  const response = await api.post('/v1/audio/summary/generate', payload)
+  if (userName) payload.user_name = userName
+  const response = await api.post('/v1/audio/summary/generate-text', payload)
+  return response.data
+}
+
+export const generateActionItems = async (text, audioId = null, userName = null) => {
+  const payload = { text }
+  if (audioId) payload.audio_id = audioId
+  if (userName) payload.user_name = userName
+  const response = await api.post('/v1/audio/summary/generate-tasks', payload)
   return response.data
 }
 
@@ -107,6 +116,19 @@ export const getHistory = async () => {
 
 export const getAudioResults = async (audioId) => {
   const response = await api.get(`/v1/audio/${audioId}/results`)
+  return response.data
+}
+
+export const submitCorrection = async (audioId, originalText, correctedText) => {
+  const payload = { original_text: originalText, corrected_text: correctedText }
+  const response = await api.post(`/v1/audio/${audioId}/correction`, payload)
+  return response.data
+}
+
+export const saveSpeakerMap = async (audioId, speakerMap) => {
+  const response = await api.post(`/v1/audio/${audioId}/speaker-map`, {
+    speaker_map: speakerMap,
+  })
   return response.data
 }
 

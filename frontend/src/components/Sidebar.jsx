@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import { Search, Home, Info, Mic, Settings, LogOut, Trash2 } from 'lucide-react'
+import { Search, Home, Info, Mic, Settings, LogOut, Trash2, Activity } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
-const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDeleteWorkspace, currentWorkspaceId, isLoadingHistory }) => {
+const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, onDeleteWorkspace, currentWorkspaceId, isLoadingHistory, isDashboardView }) => {
   const { user, logout } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -50,16 +50,25 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDeleteWorkspace, c
         </div>
       </div>
 
-      {/* Home Button */}
-      <div className="px-4 pb-3 border-b border-gray-100">
+      {/* Navigation Buttons */}
+      <div className="px-4 pb-3 border-b border-gray-100 space-y-1">
         <button 
           onClick={onHomeClick}
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            !currentWorkspaceId ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'
+            !currentWorkspaceId && !isDashboardView ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'
           }`}
         >
           <Home className="w-4 h-4" />
           Home
+        </button>
+        <button 
+          onClick={onDashboardClick}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            isDashboardView ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          <Activity className="w-4 h-4" />
+          System Dashboard
         </button>
       </div>
 
