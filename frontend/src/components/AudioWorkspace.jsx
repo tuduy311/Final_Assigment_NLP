@@ -67,6 +67,11 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
       speakerMapLoadedRef.current = false
       setError(null)
       setIsMergedView(false)
+      setAgentState('idle')
+      setAgentInput('')
+      setUserName('')
+      setIsEditing(false)
+      setEditedSegments([])
 
       try {
         const results = await getAudioResults(workspaceData.audio_id)

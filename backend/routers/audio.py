@@ -1,3 +1,4 @@
+from importlib import metadata
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Depends
 from pydantic import BaseModel
 import httpx
@@ -8,11 +9,19 @@ import uuid
 import shutil
 import asyncio
 import re
+import spacy
+from collections import Counter
+
+try:
+    nlp = spacy.load('en_core_web_sm')
+except:
+    nlp = None
+
 from typing import Optional, Dict
 from mutagen import File as MutagenFile
 from dotenv import load_dotenv
 from services.metrics_service import get_metrics_service, MetricsService
-
+import jiwer
 # Tải các biến môi trường từ file .env
 load_dotenv()
 
@@ -119,6 +128,37 @@ async def generate_transcript(audio_id: str, metrics_service: MetricsService = D
                 
             result_stt = response.json()
             
+            # Extract suggested names using spacy
+            try:
+                if nlp is not None:
+                    text = result_stt.get("text") or ""
+                    doc = nlp(text)
+                    STOP_NAMES = {
+                        "i", "me", "you",
+                        "he", "she",
+                        "it", "we",
+                        "they"
+                    }
+                    names = [
+                        ent.text.strip()
+                        for ent in doc.ents
+                        if ent.label_ == "PERSON"
+                        and len(ent.text.strip()) > 1
+                        and ent.text.lower() not in STOP_NAMES
+                    ]
+                    counter = Counter(
+                        name.lower()
+                        for name in names
+                    )
+                    result_stt["suggested_names"] = [
+                        name.title()
+                        for name, _ in counter.most_common(10)
+                    ]
+                else:
+                    result_stt["suggested_names"] = []
+            except Exception as e:
+                print(f"Error extracting names with spacy: {e}")
+                result_stt["suggested_names"] = []
             # Ghi metrics
             try:
                 duration = metadata.get("duration", 0)
@@ -278,7 +318,7 @@ async def submit_correction(audio_id: str, payload: CorrectionRequest, metrics_s
         raise HTTPException(status_code=404, detail="Audio workspace not found")
         
     try:
-        import jiwer
+        
         
         # Tính Word Error Rate (WER)
         wer = jiwer.wer(payload.original_text, payload.corrected_text)
@@ -319,7 +359,6 @@ async def save_speaker_map(audio_id: str, payload: SpeakerMapRequest):
     }
 
     with open(speaker_map_path, "w", encoding="utf-8") as f:
-        import json
         json.dump(cleaned_map, f, ensure_ascii=False)
 
     return {"success": True, "speaker_map": cleaned_map}
@@ -360,14 +399,12 @@ async def generate_summary_text(payload: SummaryRequest):
                     cached_data = {}
                     if os.path.exists(summary_path):
                         with open(summary_path, "r", encoding="utf-8") as f:
-                            import json
                             try:
                                 cached_data = json.load(f)
                             except:
                                 pass
                     cached_data.update(result_json)
                     with open(summary_path, "w", encoding="utf-8") as f:
-                        import json
                         json.dump(cached_data, f, ensure_ascii=False)
                         
             return result_json
@@ -407,7 +444,6 @@ async def generate_tasks(payload: SummaryRequest):
             action_items = []
             
             try:
-                import json
                 match = re.search(r'\[.*\]', tasks_raw, re.DOTALL)
                 if match:
                     action_items = json.loads(match.group(0))
@@ -435,14 +471,12 @@ async def generate_tasks(payload: SummaryRequest):
                     cached_data = {}
                     if os.path.exists(summary_path):
                         with open(summary_path, "r", encoding="utf-8") as f:
-                            import json
                             try:
                                 cached_data = json.load(f)
                             except:
                                 pass
                     cached_data.update(result_json)
                     with open(summary_path, "w", encoding="utf-8") as f:
-                        import json
                         json.dump(cached_data, f, ensure_ascii=False)
                         
             return result_json
@@ -515,7 +549,6 @@ async def get_audio_results(audio_id: str):
     speaker_map_path = os.path.join(workspace_dir, "speaker_map.json")
     if os.path.exists(speaker_map_path):
         with open(speaker_map_path, "r", encoding="utf-8") as f:
-            import json
             results["speaker_map"] = json.load(f)
             
     return results
