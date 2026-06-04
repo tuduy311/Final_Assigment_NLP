@@ -48,6 +48,15 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
   const [editedSegments, setEditedSegments] = useState([])
   const [isSavingCorrection, setIsSavingCorrection] = useState(false)
 
+  const audioRef = useRef(null)
+
+  const handleSeek = (seconds) => {
+    if (audioRef.current && seconds !== undefined) {
+      audioRef.current.currentTime = seconds;
+      audioRef.current.play();
+    }
+  }
+
   const uniqueSpeakers = useMemo(() => {
     if (!diarizationResult) return [];
     const segments = diarizationResult.segments || diarizationResult || [];
@@ -295,6 +304,15 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
         </button>
       </div>
 
+      <div className="bg-white rounded-xl shadow p-4 flex items-center justify-center">
+        <audio
+          ref={audioRef}
+          controls
+          className="w-full"
+          src={`/api/v1/audio/${workspaceData.audio_id}/file`}
+        />
+      </div>
+
       {/* Action Buttons */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <ActionButton
@@ -411,7 +429,7 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
               </div>
             )}
 
-            <SpeakerTimeline segments={diarizationResult.segments || diarizationResult} duration={workspaceData?.metadata?.duration} speakerMap={speakerMap} />
+            <SpeakerTimeline segments={diarizationResult.segments || diarizationResult} duration={workspaceData?.metadata?.duration} speakerMap={speakerMap} onSeek={handleSeek} />
           </ResultSection>
         )}
 
@@ -426,7 +444,7 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
               </div>
               <div>
                 <h4 className="text-lg font-semibold mb-2">Action Items</h4>
-                <ActionItemTable items={summaryResult.action_items || []} />
+                <ActionItemTable items={summaryResult.action_items || []} onSeek={handleSeek} />
               </div>
             </div>
           </ResultSection>

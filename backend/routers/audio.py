@@ -1,5 +1,6 @@
 from importlib import metadata
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import httpx
 import os
@@ -43,6 +44,9 @@ class SummaryRequest(BaseModel):
     text: str
     audio_id: Optional[str] = None
     user_name: Optional[str] = None
+
+class RenameRequest(BaseModel):
+    filename: str
 
 @router.post("/upload")
 async def upload_audio(file: UploadFile = File(...)):
@@ -126,7 +130,11 @@ async def generate_transcript(audio_id: str, metrics_service: MetricsService = D
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, detail=f"Transcribe Error: {response.text}")
                 
-            result_stt = response.json()
+            try:
+                result_stt = response.json()
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to parse JSON from Model Service. Raw response: '{response.text}'. Error: {e}")
+
             
             # Extract suggested names using spacy
             try:
@@ -553,6 +561,26 @@ async def get_audio_results(audio_id: str):
             
     return results
 
+@router.get("/{audio_id}/file")
+async def get_audio_file(audio_id: str):
+    """Phục vụ file âm thanh."""
+    workspace_dir = os.path.join(WORKSPACE_BASE_DIR, audio_id)
+    if not os.path.exists(workspace_dir):
+        raise HTTPException(status_code=404, detail="Audio workspace not found")
+        
+    metadata_path = os.path.join(workspace_dir, "metadata.json")
+    if not os.path.exists(metadata_path):
+        raise HTTPException(status_code=404, detail="Metadata not found")
+        
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+        
+    file_path = os.path.join(workspace_dir, metadata["filename"])
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+        
+    return FileResponse(file_path)
+
 @router.delete("/{audio_id}")
 async def delete_audio_workspace(audio_id: str):
     """Xóa lịch sử của một file audio."""
@@ -566,3 +594,27 @@ async def delete_audio_workspace(audio_id: str):
         return {"success": True, "message": "Đã xóa lịch sử thành công."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi xóa file: {e}")
+
+@router.put("/{audio_id}/rename")
+async def rename_audio_workspace(audio_id: str, payload: RenameRequest):
+    """Đổi tên file/workspace."""
+    workspace_dir = os.path.join(WORKSPACE_BASE_DIR, audio_id)
+    if not os.path.exists(workspace_dir):
+        raise HTTPException(status_code=404, detail="Không tìm thấy lịch sử audio.")
+        
+    metadata_path = os.path.join(workspace_dir, "metadata.json")
+    if not os.path.exists(metadata_path):
+        raise HTTPException(status_code=404, detail="Không tìm thấy metadata.")
+        
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+            
+        metadata["filename"] = payload.filename
+        
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, ensure_ascii=False)
+            
+        return {"success": True, "filename": payload.filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi đổi tên: {e}")

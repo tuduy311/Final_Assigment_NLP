@@ -23,7 +23,7 @@ const COLORS = [
   'bg-red-500'
 ];
 
-export const SpeakerTimeline = ({ segments, duration, speakerMap }) => {
+export const SpeakerTimeline = ({ segments, duration, speakerMap, onSeek }) => {
   const speakers = useMemo(() => {
     const s = new Set(segments.map(seg => seg.speaker || seg.label));
     return Array.from(s).sort();
@@ -66,6 +66,10 @@ export const SpeakerTimeline = ({ segments, duration, speakerMap }) => {
             return (
               <div 
                 key={idx}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (onSeek) onSeek(seg.start);
+                }}
                 className={`absolute top-0 bottom-0 ${colorClass} opacity-80 hover:opacity-100 transition-opacity border-r border-white group cursor-pointer`}
                 style={{ left: `${left}%`, width: `${width}%` }}
               >

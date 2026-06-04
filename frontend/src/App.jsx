@@ -8,7 +8,7 @@ import AudioWorkspace from './components/AudioWorkspace'
 import AudioRecorder from './components/AudioRecorder'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
-import { uploadAudio, getHistory, deleteWorkspace } from './services/api'
+import { uploadAudio, getHistory, deleteWorkspace, renameWorkspace } from './services/api'
 import { useAuth } from './context/AuthContext'
 import './index.css'
 
@@ -48,6 +48,19 @@ function App() {
     } catch (err) {
       console.error('Failed to delete workspace:', err)
       alert('Failed to delete workspace.')
+    }
+  }
+
+  const handleRenameWorkspace = async (audioId, newName) => {
+    try {
+      await renameWorkspace(audioId, newName)
+      if (workspaceData?.audio_id === audioId) {
+        setWorkspaceData({ ...workspaceData, filename: newName })
+      }
+      fetchHistory()
+    } catch (err) {
+      console.error('Failed to rename workspace:', err)
+      alert('Failed to rename workspace.')
     }
   }
 
@@ -114,6 +127,7 @@ function App() {
           onHomeClick={handleReset}
           onDashboardClick={handleDashboardClick}
           onDeleteWorkspace={handleDeleteWorkspace}
+          onRenameWorkspace={handleRenameWorkspace}
           currentWorkspaceId={workspaceData?.audio_id}
           isLoadingHistory={isLoadingHistory}
           isDashboardView={showDashboard}

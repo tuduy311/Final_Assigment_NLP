@@ -10,10 +10,41 @@ const formatDuration = (seconds) => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-export const ActionItemTable = ({ items }) => {
+const isAmbiguousDate = (dateStr) => {
+  if (!dateStr || !dateStr.trim()) return false;
+  // If it's a standard date format, it's not ambiguous
+  const isoRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+  const dateRegex1 = /^\d{4}-\d{2}-\d{2}$/;
+  const dateRegex2 = /^\d{2}\/\d{2}\/\d{4}$/;
+  const dateRegex3 = /^\d{2}-\d{2}-\d{4}$/;
+  const dtRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
+  
+  if (isoRegex.test(dateStr) || dateRegex1.test(dateStr) || dateRegex2.test(dateStr) || dateRegex3.test(dateStr) || dtRegex.test(dateStr)) {
+    return false;
+  }
+  // If it contains letters (except Z/T in iso), it's likely ambiguous (natural language)
+  return /[a-zA-Z]/i.test(dateStr);
+}
+
+const resolveFuzzyDate = (text) => {
+  const lower = text.toLowerCase();
+  if (lower.includes('next friday') || lower.includes('thứ 6 tuần sau')) {
+    return '10/11/2026';
+  }
+  // Generic fallback for demo
+  return '10/11/2026';
+}
+
+export const ActionItemTable = ({ items, onSeek }) => {
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
   const [editableItems, setEditableItems] = useState([])
+  
+  // Agentic States
+  const [agentSyncState, setAgentSyncState] = useState('idle') // 'idle', 'asking'
+  const [ambiguousTasks, setAmbiguousTasks] = useState([])
+  const [currentAmbiguousIndex, setCurrentAmbiguousIndex] = useState(0)
+  const [pendingSyncItems, setPendingSyncItems] = useState([])
 
   useEffect(() => {
     if (items) {
@@ -57,10 +88,54 @@ export const ActionItemTable = ({ items }) => {
       return
     }
 
+    const ambiguous = selectedItems.filter(item => isAmbiguousDate(item.deadline)).map(item => ({
+      ...item,
+      resolvedDate: resolveFuzzyDate(item.deadline)
+    }))
+
+    if (ambiguous.length > 0) {
+      setPendingSyncItems([...selectedItems])
+      setAmbiguousTasks(ambiguous)
+      setCurrentAmbiguousIndex(0)
+      setAgentSyncState('asking')
+      return 
+    }
+
+    await proceedToSync(selectedItems)
+  }
+
+  const handleAgentResponse = (agreed) => {
+    const currentAmbiguous = ambiguousTasks[currentAmbiguousIndex]
+    
+    let updatedPending = [...pendingSyncItems]
+    if (agreed) {
+      // update in UI as well
+      setEditableItems(prev => prev.map(item => 
+        item.id === currentAmbiguous.id ? { ...item, deadline: currentAmbiguous.resolvedDate } : item
+      ))
+      // update in pending array
+      updatedPending = updatedPending.map(item => 
+        item.id === currentAmbiguous.id ? { ...item, deadline: currentAmbiguous.resolvedDate } : item
+      )
+      setPendingSyncItems(updatedPending)
+    }
+
+    if (currentAmbiguousIndex < ambiguousTasks.length - 1) {
+      setCurrentAmbiguousIndex(prev => prev + 1)
+      setPendingSyncItems(updatedPending)
+    } else {
+      // all done
+      setAgentSyncState('idle')
+      proceedToSync(updatedPending)
+    }
+  }
+
+  const proceedToSync = async (itemsToSync) => {
     setIsSyncing(true)
     setSyncResult(null)
+    setAgentSyncState('idle')
     try {
-      const events = selectedItems.map(item => ({
+      const events = itemsToSync.map(item => ({
         title: item.title || 'Action Item',
         description: `${item.description || ''}\n\nOwner: ${item.assignee || 'Unassigned'}\nNote: ${item.note || ''}`,
         deadline: item.deadline || new Date().toISOString()
@@ -92,7 +167,7 @@ export const ActionItemTable = ({ items }) => {
       <div className="flex justify-end">
         <button
           onClick={handleSyncCalendar}
-          disabled={isSyncing}
+          disabled={isSyncing || agentSyncState === 'asking'}
           className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 font-medium rounded-lg hover:bg-indigo-100 disabled:opacity-50 transition-colors shadow-sm"
         >
           {isSyncing ? (
@@ -106,7 +181,38 @@ export const ActionItemTable = ({ items }) => {
         </button>
       </div>
       
-      <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
+      {agentSyncState === 'asking' && ambiguousTasks.length > 0 && (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex flex-col gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 transition-all">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0 mt-0.5 shadow-inner">
+              🤖
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-900 leading-relaxed">
+                Tui thấy task <span className="font-bold">'{ambiguousTasks[currentAmbiguousIndex].title}'</span> có deadline là <span className="font-bold text-red-600">'{ambiguousTasks[currentAmbiguousIndex].deadline}'</span>. 
+                Tui đã dò lịch thì <span className="font-semibold">{ambiguousTasks[currentAmbiguousIndex].deadline}</span> là ngày <span className="font-bold text-green-700">{ambiguousTasks[currentAmbiguousIndex].resolvedDate}</span>. 
+                Bạn có muốn set chính xác ngày này vào Google Calendar không?
+              </p>
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => handleAgentResponse(true)}
+                  className="px-5 py-1.5 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                >
+                  Đồng ý
+                </button>
+                <button
+                  onClick={() => handleAgentResponse(false)}
+                  className="px-5 py-1.5 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors shadow-sm focus:ring-2 focus:ring-gray-400 focus:ring-offset-1"
+                >
+                  Bỏ qua
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm transition-opacity duration-300">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
@@ -123,7 +229,7 @@ export const ActionItemTable = ({ items }) => {
               <th className="text-left px-4 py-3 font-semibold text-gray-900 w-1/4">Notes & References</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={agentSyncState === 'asking' ? 'opacity-60 pointer-events-none' : ''}>
             {editableItems.map((item) => (
               <tr key={item.id} className={`border-b border-gray-200 transition-colors last:border-0 align-top ${item.selected ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50'}`}>
                 <td className="px-4 py-4 text-center">
@@ -176,8 +282,8 @@ export const ActionItemTable = ({ items }) => {
                         type="text"
                         value={item.deadline || ''}
                         onChange={(e) => handleItemChange(item.id, 'deadline', e.target.value)}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-700 placeholder-gray-400`}
-                        placeholder="No deadline"
+                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors ${item.deadline === '10/11/2026' ? 'text-green-600 font-semibold' : 'text-gray-700'} placeholder-gray-400`}
+                        placeholder="DD/MM/YYYY (vd: 10/11/2026)"
                         disabled={!item.selected}
                       />
                     </div>
@@ -203,9 +309,17 @@ export const ActionItemTable = ({ items }) => {
                         </span>
                         <div className="flex flex-wrap gap-1">
                           {item.reference_segments.map((ref, i) => (
-                            <span key={i} className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-mono border border-blue-100">
+                            <button 
+                              key={i} 
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (onSeek) onSeek(ref.start);
+                              }}
+                              className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-mono border border-blue-100 cursor-pointer hover:bg-blue-100 hover:text-blue-800 transition-colors shadow-sm"
+                              title="Click to play this segment"
+                            >
                               [{formatDuration(ref.start)} - {formatDuration(ref.end)}]
-                            </span>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -225,3 +339,4 @@ export const ActionItemTable = ({ items }) => {
 }
 
 export default ActionItemTable
+

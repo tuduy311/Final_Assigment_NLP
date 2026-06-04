@@ -57,6 +57,11 @@ def _parse_deadline(deadline_str: str) -> Optional[dict]:
         # Nếu có Z ở cuối, thay bằng +00:00 để fromisoformat parse được (cho python < 3.11)
         iso_str = deadline_str.replace("Z", "+00:00")
         dt = datetime.fromisoformat(iso_str)
+        vn_tz = timezone(timedelta(hours=7))
+        if dt.tzinfo:
+            dt = dt.astimezone(vn_tz)
+        else:
+            dt = dt.replace(tzinfo=vn_tz)
         return {"dateTime": dt.isoformat(), "timeZone": "Asia/Ho_Chi_Minh"}
     except ValueError:
         pass
@@ -76,6 +81,8 @@ def _parse_deadline(deadline_str: str) -> Optional[dict]:
             if fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
                 return {"date": dt.strftime("%Y-%m-%d")}
             else:
+                vn_tz = timezone(timedelta(hours=7))
+                dt = dt.replace(tzinfo=vn_tz)
                 return {"dateTime": dt.isoformat(), "timeZone": "Asia/Ho_Chi_Minh"}
         except ValueError:
             continue
@@ -171,6 +178,7 @@ async def create_calendar_events(request: Request, payload: CreateEventsRequest)
                         detail="Google access token hết hạn. Vui lòng đăng nhập lại."
                     )
                 else:
+                    print(f"GOOGLE CALENDAR API ERROR: {response.text}")
                     failed.append({
                         "title": event.title,
                         "error": response.text,
