@@ -141,7 +141,7 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
           if (isMergedView) {
             textToSummarize = mergedTranscriptResult || mergeTranscriptAndDiarization(transcriptResult, diarizationResult, speakerMap);
           } else if (transcriptResult?.segments) {
-            textToSummarize = transcriptResult.segments.map(seg => `[${formatDuration(seg.start)} - ${formatDuration(seg.end)}] ${seg.text}`).join('\n');
+            textToSummarize = transcriptResult.segments.map(seg => `[${Number(seg.start).toFixed(2)}s - ${Number(seg.end).toFixed(2)}s] ${seg.text}`).join('\n');
           } else {
             textToSummarize = transcriptResult?.text || '';
           }
@@ -241,13 +241,24 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
   // --- Agentic handlers ---
   const handleSpeakerMapChange = (speaker, value) => {
     setSpeakerMap(prev => {
-      const next = { ...prev, [speaker]: value }
-      if (value === 'Me' && agentState === 'idle') {
-        setAgentState('asking')
-      }
-      return next
+      return { ...prev, [speaker]: value }
     })
+
+    if (value === 'Me' && agentState === 'idle') {
+      setAgentState('asking')
+    }
   }
+
+  useEffect(() => {
+    if (speakerMapLoadedRef.current) {
+      const hasMe = Object.values(speakerMap).includes('Me')
+      if (!hasMe && agentState !== 'idle') {
+        setAgentState('idle')
+        setUserName('')
+        setAgentInput('')
+      }
+    }
+  }, [speakerMap, agentState])
 
   const handleAgentNameSelect = (name) => {
     setUserName(name)

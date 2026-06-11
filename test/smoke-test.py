@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-BASE_URL = "https://needle-george-sing-learned.trycloudflare.com/"
+BASE_URL = "https://moving-wheels-booth-backgrounds.trycloudflare.com"
 TIMEOUT_TRANSCRIBE = 300
 TIMEOUT_LLM        = 120
 
@@ -78,15 +78,12 @@ def test_transcribe(audio_path: str) -> str:
         segments = data.get("segments", [])
         print_result("num_segments:",        len(segments))
         print_result("latency_ms (server):", data.get("latency_ms"))
-        print_result("is_flagged:",          data.get("is_flagged"))
-        print_result("flag_reasons:",        data.get("flag_reasons"))
 
         if segments:
             print("\n  Segments:")
             for idx, seg in enumerate(segments, 1):
                 start = seg.get("start")
                 end = seg.get("end")
-                speaker = seg.get("speaker")
                 text_seg = (seg.get("text") or "").replace("\n", " ").strip()
 
                 if isinstance(start, (int, float)) and isinstance(end, (int, float)):
@@ -94,9 +91,8 @@ def test_transcribe(audio_path: str) -> str:
                 else:
                     ts = "[timestamp unavailable]"
 
-                speaker_part = f" {speaker}" if speaker else ""
                 preview = f' "{text_seg}"' if text_seg else ""
-                print(f"    {idx:02d}. {ts}{speaker_part}{preview}")
+                print(f"    {idx:02d}. {ts}{preview}")
 
         text = data.get("text", "")
         preview = text[:120].replace("\n", " ")
@@ -115,6 +111,55 @@ def test_transcribe(audio_path: str) -> str:
     except Exception as e:
         print(f"  ERROR: {e}")
         return ""
+
+# ── /diarize (POST) ───────────────────────────────────────────────────────────
+
+def test_diarize(audio_path: str) -> list:
+    print_header(f"POST /diarize  ({Path(audio_path).name})")
+    try:
+        with open(audio_path, "rb") as f:
+            t0 = time.time()
+            r  = requests.post(
+                f"{BASE_URL}/diarize",
+                files={"file": f},
+                timeout=TIMEOUT_TRANSCRIBE,
+            )
+        latency = round((time.time() - t0) * 1000, 2)
+
+        print_result("Latency (client):", f"{latency} ms")
+        ok = check_status(r)
+        if not ok:
+            print(f"  Body: {r.text[:300]}")
+            return []
+
+        data = r.json()
+        segments = data.get("segments", [])
+        
+        print_result("latency_ms (server):", data.get("latency_ms"))
+        print_result("num_segments:", len(segments))
+
+        if segments:
+            print("\n  Segments:")
+            for idx, seg in enumerate(segments[:5], 1):
+                start = seg.get("start")
+                end = seg.get("end")
+                speaker = seg.get("speaker")
+                
+                if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+                    ts = f"[{start:.2f}s → {end:.2f}s]"
+                else:
+                    ts = "[timestamp unavailable]"
+                    
+                print(f"    {idx:02d}. {ts} {speaker}")
+                
+            if len(segments) > 5:
+                print(f"    ... and {len(segments)-5} more segments")
+
+        return segments
+
+    except Exception as e:
+        print(f"  ERROR: {e}")
+        return []
 
 # ── /generate/summary (POST) ──────────────────────────────────────────────────
 
@@ -161,11 +206,15 @@ def test_generate_tasks(text: str) -> list:
         return []
     try:
         t0 = time.time()
+        text = f"{text}\n But Eve, the test was rescheduled to next Saturday."
+        print(f"  Text: {text}")
         r  = requests.post(
             f"{BASE_URL}/generate/tasks",
             json={"text": text},
             timeout=TIMEOUT_LLM,
         )
+        # raw json from server
+        print(f"  Body: {r.text}")
         print_result("Latency (client):", f"{round((time.time()-t0)*1000,2)} ms")
         ok = check_status(r)
         if not ok:
@@ -194,9 +243,9 @@ def test_generate_tasks(text: str) -> list:
         for i, item in enumerate(action_items[:3], 1):
             print(f"\n  Task {i}:")
             print(f"    title    : {item.get('title')}")
-            print(f"    assignee : {item.get('assignee')}")
+            print(f"    assignees: {item.get('assignees')}")
             print(f"    description : {item.get('description', '')[:80]}")
-            print(f"    due_date : {item.get('due_date')}")
+            print(f"    deadline : {item.get('deadline')}")
             refs = item.get("reference_segments") or []
             print(f"    refs     : {len(refs)} segment(s)")
 
@@ -209,24 +258,40 @@ def test_generate_tasks(text: str) -> list:
         print(f"  ERROR: {e}")
         return []
 
-# ── /transcribe — error cases ─────────────────────────────────────────────────
+# ── error cases ───────────────────────────────────────────────────────────────
 
-def test_transcribe_errors():
-    print_header("POST /transcribe  (error cases)")
+def test_error_cases():
+    print_header("POST /transcribe & /diarize (error cases)")
 
-    # no file field
+    # transcribe: no file field
     r = requests.post(f"{BASE_URL}/transcribe", timeout=10)
-    label = "no file → 422"
+    label = "transcribe: no file → 422"
     ok    = r.status_code == 422
     print_result(label, "✅" if ok else f"❌ got {r.status_code}")
 
-    # empty filename workaround — send empty bytes
+    # transcribe: empty filename workaround — send empty bytes
     r = requests.post(
         f"{BASE_URL}/transcribe",
         files={"file": ("", b"", "audio/mpeg")},
         timeout=10,
     )
-    label = "empty filename → 400"
+    label = "transcribe: empty filename → 400"
+    ok    = r.status_code == 400
+    print_result(label, "✅" if ok else f"❌ got {r.status_code}")
+
+    # diarize: no file field
+    r = requests.post(f"{BASE_URL}/diarize", timeout=10)
+    label = "diarize: no file → 422"
+    ok    = r.status_code == 422
+    print_result(label, "✅" if ok else f"❌ got {r.status_code}")
+
+    # diarize: empty filename workaround
+    r = requests.post(
+        f"{BASE_URL}/diarize",
+        files={"file": ("", b"", "audio/mpeg")},
+        timeout=10,
+    )
+    label = "diarize: empty filename → 400"
     ok    = r.status_code == 400
     print_result(label, "✅" if ok else f"❌ got {r.status_code}")
 
@@ -234,7 +299,7 @@ def test_transcribe_errors():
 
 if __name__ == "__main__":
     script_dir = Path(__file__).resolve().parent
-    audio = Path(sys.argv[1]) if len(sys.argv) > 1 else script_dir / "test.mp3"
+    audio = Path(sys.argv[1]) if len(sys.argv) > 1 else script_dir / "mp3-output-ttsfree(dot)com.mp3"
     if not audio.is_absolute():
         audio = script_dir / audio
 
@@ -251,12 +316,15 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # 2. error cases trước — không cần audio
-    test_transcribe_errors()
+    test_error_cases()
 
     # 3. transcribe
     text = test_transcribe(audio)
 
-    # 4. LLM endpoints — chỉ chạy nếu có transcript
+    # 4. diarize
+    test_diarize(audio)
+
+    # 5. LLM endpoints — chỉ chạy nếu có transcript
     if text:
         test_generate_summary(text)
         test_generate_tasks(text)

@@ -28,18 +28,24 @@ export const ActionItemTable = ({ items, onSeek }) => {
 
   useEffect(() => {
     if (items) {
-      setEditableItems(items.map((item, idx) => ({
-        ...item,
-        id: idx,
-        selected: true,
-        title: item.title || item.task || '',
-        description: item.description || '',
-        note: item.note || '',
-        reference_segments: item.reference_segments || [],
-        assignee: item.assignees ? item.assignees.join(', ') : (item.assignee || item.owner || ''),
-        deadline: extractDeadline(item.deadline),
-        deadline_info: item.deadline_info || null
-      })))
+      setEditableItems(items.map((item, idx) => {
+        const deadlineInfo = extractDeadlineInfo(item.deadline);
+        return {
+          ...item,
+          id: idx,
+          selected: true,
+          title: item.title || item.task || '',
+          description: item.description || '',
+          note: item.note || '',
+          reference_segments: item.reference_segments || [],
+          assignee: item.assignees ? item.assignees.join(', ') : (item.assignee || item.owner || ''),
+          // Flatten deadline for editable UI — keep original object too
+          deadline: deadlineInfo.display,
+          deadlineResolved: deadlineInfo.isResolved,
+          deadlineRaw: deadlineInfo.rawPhrase,
+          deadlineConfidence: deadlineInfo.confidence,
+        };
+      }))
     }
   }, [items])
 
@@ -69,6 +75,49 @@ export const ActionItemTable = ({ items, onSeek }) => {
       return
     }
 
+    const ambiguous = selectedItems.filter(item => isAmbiguousDate(item.deadline) || (!item.deadlineResolved && item.deadlineConfidence !== null)).map(item => ({
+      ...item,
+      resolvedDate: item.deadlineResolved ? item.deadline : resolveFuzzyDate(item.deadlineRaw || item.deadline)
+    }))
+
+    if (ambiguous.length > 0) {
+      setPendingSyncItems([...selectedItems])
+      setAmbiguousTasks(ambiguous)
+      setCurrentAmbiguousIndex(0)
+      setAgentSyncState('asking')
+      return 
+    }
+
+    await proceedToSync(selectedItems)
+  }
+
+  const handleAgentResponse = (agreed) => {
+    const currentAmbiguous = ambiguousTasks[currentAmbiguousIndex]
+    
+    let updatedPending = [...pendingSyncItems]
+    if (agreed) {
+      // update in UI as well
+      setEditableItems(prev => prev.map(item => 
+        item.id === currentAmbiguous.id ? { ...item, deadline: currentAmbiguous.resolvedDate } : item
+      ))
+      // update in pending array
+      updatedPending = updatedPending.map(item => 
+        item.id === currentAmbiguous.id ? { ...item, deadline: currentAmbiguous.resolvedDate } : item
+      )
+      setPendingSyncItems(updatedPending)
+    }
+
+    if (currentAmbiguousIndex < ambiguousTasks.length - 1) {
+      setCurrentAmbiguousIndex(prev => prev + 1)
+      setPendingSyncItems(updatedPending)
+    } else {
+      // all done
+      setAgentSyncState('idle')
+      proceedToSync(updatedPending)
+    }
+  }
+
+  const proceedToSync = async (itemsToSync) => {
     setIsSyncing(true)
     setSyncResult(null)
     try {
@@ -184,15 +233,31 @@ export const ActionItemTable = ({ items, onSeek }) => {
                     </div>
                     <div className={`flex items-center gap-2 ${!item.selected && 'opacity-50'}`}>
                       <CalendarIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <input
-                        type="text"
-                        value={item.deadline || ''}
-                        onChange={(e) => handleItemChange(item.id, 'deadline', e.target.value)}
-                        title={item.deadline_info ? `Transcript: "${item.deadline_info.raw_phrase || 'N/A'}"${item.deadline_info.reasoning ? `\nReasoning: ${item.deadline_info.reasoning}` : ''}${item.deadline_info.confidence ? `\nConfidence: ${item.deadline_info.confidence}` : ''}` : ''}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-700 placeholder-gray-400`}
-                        placeholder="No deadline"
-                        disabled={!item.selected}
-                      />
+                      <div className="flex flex-col w-full">
+                        <input
+                          type="text"
+                          value={item.deadline || ''}
+                          onChange={(e) => handleItemChange(item.id, 'deadline', e.target.value)}
+                          className={`w-full bg-transparent border-0 border-b ${
+                            item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'
+                          } focus:ring-0 px-0 py-1 transition-colors ${
+                            item.deadlineResolved ? 'text-green-600 font-semibold' : 'text-amber-600'
+                          } placeholder-gray-400`}
+                          placeholder="DD/MM/YYYY or phrase"
+                          disabled={!item.selected}
+                        />
+                        {/* Confidence badge */}
+                        {item.deadlineConfidence && !item.deadlineResolved && (
+                          <span className="text-[10px] text-amber-500 mt-0.5">
+                            ⏳ Unresolved — original: "{item.deadlineRaw}"
+                          </span>
+                        )}
+                        {item.deadlineResolved && item.deadlineRaw && (
+                          <span className="text-[10px] text-green-500 mt-0.5">
+                            ✅ Resolved from: "{item.deadlineRaw}"
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </td>
