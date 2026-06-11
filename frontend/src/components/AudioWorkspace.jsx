@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
-import { generateTranscript, detectSpeakers, generateSummaryText, generateActionItems, getAudioResults, saveSpeakerMap, submitCorrection } from '../services/api'
+import { generateTranscript, detectSpeakers, generateSummaryText, generateActionItems, getAudioResults, saveSpeakerMap, submitCorrection, getAudioFileUrl } from '../services/api'
 import { buildEditableTranscriptSegments, buildMergedTranscriptSegments, mergeTranscriptAndDiarization } from '../utils/mergeTranscript'
 import { Loader2, FileAudio, Clock, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
 import ActionItemTable from './ActionItemTable'
 import ReactMarkdown from 'react-markdown'
 import SpeakerTimeline from './SpeakerTimeline'
+import AudioPlayer from './AudioPlayer'
 
 const formatDuration = (seconds) => {
   if (seconds === undefined || seconds === null) return '00:00:000';
@@ -37,6 +38,7 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
 
   const [speakerMap, setSpeakerMap] = useState({})
   const speakerMapLoadedRef = useRef(false)
+  const audioPlayerRef = useRef(null)
 
   // Agentic: user real name state
   const [userName, setUserName] = useState('')
@@ -47,15 +49,6 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editedSegments, setEditedSegments] = useState([])
   const [isSavingCorrection, setIsSavingCorrection] = useState(false)
-
-  const audioRef = useRef(null)
-
-  const handleSeek = (seconds) => {
-    if (audioRef.current && seconds !== undefined) {
-      audioRef.current.currentTime = seconds;
-      audioRef.current.play();
-    }
-  }
 
   const uniqueSpeakers = useMemo(() => {
     if (!diarizationResult) return [];
@@ -286,6 +279,14 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
     setAgentState('confirmed')
   }
 
+  // Seek audio player to a specific time and auto-play
+  const handleSeek = (startTime) => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.seekTo(startTime)
+      audioPlayerRef.current.play()
+    }
+  }
+
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6">
       {error && (
@@ -315,14 +316,13 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow p-4 flex items-center justify-center">
-        <audio
-          ref={audioRef}
-          controls
-          className="w-full"
-          src={`/api/v1/audio/${workspaceData.audio_id}/file`}
+      {/* Audio Player */}
+      {workspaceData?.audio_id && (
+        <AudioPlayer
+          ref={audioPlayerRef}
+          src={getAudioFileUrl(workspaceData.audio_id)}
         />
-      </div>
+      )}
 
       {/* Action Buttons */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -528,7 +528,16 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
                     key={idx}
                     className="grid grid-cols-1 md:grid-cols-[max-content_max-content_minmax(0,1fr)] gap-2 md:gap-3 rounded-lg border border-gray-100 bg-gray-50/70 px-4 py-3"
                   >
-                    <div className="font-semibold text-gray-400 whitespace-nowrap font-mono text-xs md:mt-1">
+                    <div
+                      className="font-semibold text-gray-400 whitespace-nowrap font-mono text-xs md:mt-1 cursor-pointer hover:text-blue-600 transition-colors"
+                      onClick={() => {
+                        if (item.start !== null) {
+                          audioPlayerRef.current?.seekTo(item.start)
+                          audioPlayerRef.current?.play()
+                        }
+                      }}
+                      title="Click to jump to this segment"
+                    >
                       {item.start !== null && item.end !== null
                         ? `[${formatDuration(item.start)} - ${formatDuration(item.end)}]`
                         : ''}
@@ -560,8 +569,15 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
               <div className="text-gray-700 space-y-3">
                 {transcriptResult.segments && transcriptResult.segments.length > 0
                   ? transcriptResult.segments.map((seg, idx) => (
-                    <div key={idx} className="flex gap-3">
-                      <span className="font-semibold text-gray-400 whitespace-nowrap font-mono text-xs mt-1 w-[145px]">
+                    <div key={idx} className="flex gap-3 group/seg">
+                      <span
+                        className="font-semibold text-gray-400 whitespace-nowrap font-mono text-xs mt-1 w-[145px] cursor-pointer hover:text-blue-600 transition-colors"
+                        onClick={() => {
+                          audioPlayerRef.current?.seekTo(seg.start)
+                          audioPlayerRef.current?.play()
+                        }}
+                        title="Click to jump to this segment"
+                      >
                         [{formatDuration(seg.start)} - {formatDuration(seg.end)}]:
                       </span>
                       <span className="leading-relaxed"> {seg.text.trim()}</span>

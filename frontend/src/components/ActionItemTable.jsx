@@ -10,64 +10,21 @@ const formatDuration = (seconds) => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-const isAmbiguousDate = (deadlineValue) => {
-  // New schema: deadline is an object
-  if (deadlineValue && typeof deadlineValue === 'object') {
-    // If resolved is filled → not ambiguous
-    if (deadlineValue.resolved) return false;
-    // If confidence is low/unresolvable and no resolved → ambiguous
-    return true;
+// Helper: extract displayable deadline string from model's deadline (string or object)
+const extractDeadline = (dl) => {
+  if (!dl) return '';
+  if (typeof dl === 'string') return dl;
+  if (typeof dl === 'object') {
+    // Model trả về: { resolved, raw_phrase, reasoning, anchor, offset_from_anchor, confidence }
+    return dl.resolved || dl.raw_phrase || '';
   }
-  // Legacy: deadline is a plain string
-  if (!deadlineValue || !deadlineValue.trim()) return false;
-  const isoRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-  const dateRegex1 = /^\d{4}-\d{2}-\d{2}$/;
-  const dateRegex2 = /^\d{2}\/\d{2}\/\d{4}$/;
-  const dateRegex3 = /^\d{2}-\d{2}-\d{4}$/;
-  const dtRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
-  if (isoRegex.test(deadlineValue) || dateRegex1.test(deadlineValue) || dateRegex2.test(deadlineValue) || dateRegex3.test(deadlineValue) || dtRegex.test(deadlineValue)) {
-    return false;
-  }
-  return /[a-zA-Z]/i.test(deadlineValue);
-}
-
-// Extract a display string and a calendar-ready value from the (possibly object) deadline
-const extractDeadlineInfo = (deadlineValue) => {
-  if (!deadlineValue) return { display: '', calendarValue: '', isResolved: false, rawPhrase: '', confidence: null };
-  if (typeof deadlineValue === 'object') {
-    const resolved = deadlineValue.resolved || null;
-    const raw = deadlineValue.raw_phrase || '';
-    const confidence = deadlineValue.confidence || 'low';
-    return {
-      display: resolved || raw || '',
-      calendarValue: resolved || '',
-      isResolved: !!resolved,
-      rawPhrase: raw,
-      confidence,
-    };
-  }
-  // Legacy plain string
-  return { display: deadlineValue, calendarValue: deadlineValue, isResolved: false, rawPhrase: deadlineValue, confidence: null };
-}
-
-const resolveFuzzyDate = (text) => {
-  const lower = (text || '').toLowerCase();
-  if (lower.includes('next friday') || lower.includes('thứ 6 tuần sau')) {
-    return '10/11/2026';
-  }
-  return '10/11/2026';
-}
+  return '';
+};
 
 export const ActionItemTable = ({ items, onSeek }) => {
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
   const [editableItems, setEditableItems] = useState([])
-  
-  // Agentic States
-  const [agentSyncState, setAgentSyncState] = useState('idle') // 'idle', 'asking'
-  const [ambiguousTasks, setAmbiguousTasks] = useState([])
-  const [currentAmbiguousIndex, setCurrentAmbiguousIndex] = useState(0)
-  const [pendingSyncItems, setPendingSyncItems] = useState([])
 
   useEffect(() => {
     if (items) {
@@ -101,7 +58,7 @@ export const ActionItemTable = ({ items, onSeek }) => {
   }
 
   const handleItemChange = (id, field, value) => {
-    setEditableItems(prev => prev.map(item => 
+    setEditableItems(prev => prev.map(item =>
       item.id === id ? { ...item, [field]: value } : item
     ))
   }
@@ -163,15 +120,14 @@ export const ActionItemTable = ({ items, onSeek }) => {
   const proceedToSync = async (itemsToSync) => {
     setIsSyncing(true)
     setSyncResult(null)
-    setAgentSyncState('idle')
     try {
-      const events = itemsToSync.map(item => ({
+      const events = selectedItems.map(item => ({
         title: item.title || 'Action Item',
         description: `${item.description || ''}\n\nOwner: ${item.assignee || 'Unassigned'}\nNote: ${item.note || ''}`,
         deadline: item.deadline || new Date().toISOString()
       }))
       const response = await createCalendarEvents(events)
-      
+
       if (response.failed && response.failed.length > 0) {
         console.error('Failed to sync some events:', response.failed)
         alert(`Failed to sync some tasks to Google Calendar:\n\n${response.failed.map(f => `- ${f.title}: ${f.error}`).join('\n')}`)
@@ -197,7 +153,7 @@ export const ActionItemTable = ({ items, onSeek }) => {
       <div className="flex justify-end">
         <button
           onClick={handleSyncCalendar}
-          disabled={isSyncing || agentSyncState === 'asking'}
+          disabled={isSyncing}
           className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 font-medium rounded-lg hover:bg-indigo-100 disabled:opacity-50 transition-colors shadow-sm"
         >
           {isSyncing ? (
@@ -210,45 +166,14 @@ export const ActionItemTable = ({ items, onSeek }) => {
           {isSyncing ? 'Syncing...' : syncResult === 'success' ? 'Synced!' : 'Add to Google Calendar'}
         </button>
       </div>
-      
-      {agentSyncState === 'asking' && ambiguousTasks.length > 0 && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex flex-col gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 transition-all">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0 mt-0.5 shadow-inner">
-              🤖
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-blue-900 leading-relaxed">
-                Tui thấy task <span className="font-bold">'{ambiguousTasks[currentAmbiguousIndex].title}'</span> có deadline là <span className="font-bold text-red-600">'{ambiguousTasks[currentAmbiguousIndex].deadline}'</span>. 
-                Tui đã dò lịch thì <span className="font-semibold">{ambiguousTasks[currentAmbiguousIndex].deadline}</span> là ngày <span className="font-bold text-green-700">{ambiguousTasks[currentAmbiguousIndex].resolvedDate}</span>. 
-                Bạn có muốn set chính xác ngày này vào Google Calendar không?
-              </p>
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={() => handleAgentResponse(true)}
-                  className="px-5 py-1.5 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                >
-                  Đồng ý
-                </button>
-                <button
-                  onClick={() => handleAgentResponse(false)}
-                  className="px-5 py-1.5 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors shadow-sm focus:ring-2 focus:ring-gray-400 focus:ring-offset-1"
-                >
-                  Bỏ qua
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm transition-opacity duration-300">
+      <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
               <th className="px-4 py-3 w-12 text-center">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={editableItems.length > 0 && editableItems.every(i => i.selected)}
                   onChange={toggleSelectAll}
                   className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
@@ -259,12 +184,12 @@ export const ActionItemTable = ({ items, onSeek }) => {
               <th className="text-left px-4 py-3 font-semibold text-gray-900 w-1/4">Notes & References</th>
             </tr>
           </thead>
-          <tbody className={agentSyncState === 'asking' ? 'opacity-60 pointer-events-none' : ''}>
+          <tbody>
             {editableItems.map((item) => (
               <tr key={item.id} className={`border-b border-gray-200 transition-colors last:border-0 align-top ${item.selected ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50'}`}>
                 <td className="px-4 py-4 text-center">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={item.selected}
                     onChange={(e) => handleItemChange(item.id, 'selected', e.target.checked)}
                     className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer mt-1"
@@ -356,16 +281,13 @@ export const ActionItemTable = ({ items, onSeek }) => {
                         </span>
                         <div className="flex flex-wrap gap-1">
                           {item.reference_segments.map((ref, i) => (
-                            <button 
-                              key={i} 
-                              onClick={(e) => {
-                                e.preventDefault();
-                                if (onSeek) onSeek(ref.start);
-                              }}
-                              className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-mono border border-blue-100 cursor-pointer hover:bg-blue-100 hover:text-blue-800 transition-colors shadow-sm"
-                              title="Click to play this segment"
+                            <button
+                              key={i}
+                              onClick={() => onSeek && onSeek(ref.start)}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-mono border border-blue-100 hover:bg-blue-100 hover:border-blue-300 hover:text-blue-900 transition-colors cursor-pointer"
+                              title={`Click to play from ${formatDuration(ref.start)}`}
                             >
-                              [{formatDuration(ref.start)} - {formatDuration(ref.end)}]
+                              ▶ [{formatDuration(ref.start)} - {formatDuration(ref.end)}]
                             </button>
                           ))}
                         </div>
@@ -386,4 +308,3 @@ export const ActionItemTable = ({ items, onSeek }) => {
 }
 
 export default ActionItemTable
-

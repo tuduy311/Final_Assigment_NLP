@@ -90,11 +90,6 @@ export const deleteWorkspace = async (audioId) => {
   return response.data
 }
 
-export const renameWorkspace = async (audioId, newName) => {
-  const response = await api.put(`/v1/audio/${audioId}/rename`, { filename: newName })
-  return response.data
-}
-
 /**
  * Tạo sự kiện Google Calendar từ action items
  * Endpoint: POST /api/v1/calendar/create-events
@@ -136,5 +131,7 @@ export const saveSpeakerMap = async (audioId, speakerMap) => {
   })
   return response.data
 }
+
+export const getAudioFileUrl = (audioId) => `/api/v1/audio/${audioId}/file`
 
 export default api

@@ -1,12 +1,10 @@
 import React, { useState } from 'react'
-import { Search, Home, Info, Mic, Settings, LogOut, Trash2, Activity, Edit2 } from 'lucide-react'
+import { Search, Home, Info, Mic, Settings, LogOut, Trash2, Activity } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
-const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, onDeleteWorkspace, onRenameWorkspace, currentWorkspaceId, isLoadingHistory, isDashboardView }) => {
+const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, onDeleteWorkspace, currentWorkspaceId, isLoadingHistory, isDashboardView }) => {
   const { user, logout } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
-  const [editingId, setEditingId] = useState(null)
-  const [editName, setEditName] = useState('')
 
   const formatDuration = (seconds) => {
     if (!seconds) return '0 mins'
@@ -22,7 +20,7 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
     return { dateStr, timeStr }
   }
 
-  const filteredHistory = history.filter(item => 
+  const filteredHistory = history.filter(item =>
     (item.filename || 'Unknown Audio').toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -42,8 +40,8 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
       <div className="px-4 py-3">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder="Search meetings..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -54,20 +52,18 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
 
       {/* Navigation Buttons */}
       <div className="px-4 pb-3 border-b border-gray-100 space-y-1">
-        <button 
+        <button
           onClick={onHomeClick}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            !currentWorkspaceId && !isDashboardView ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'
-          }`}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!currentWorkspaceId && !isDashboardView ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'
+            }`}
         >
           <Home className="w-4 h-4" />
           Home
         </button>
-        <button 
+        <button
           onClick={onDashboardClick}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            isDashboardView ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-          }`}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isDashboardView ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+            }`}
         >
           <Activity className="w-4 h-4" />
           System Dashboard
@@ -91,76 +87,34 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
             {filteredHistory.map((item) => {
               const { dateStr, timeStr } = formatDateTime(item.created_at)
               const isSelected = currentWorkspaceId === item.audio_id
-              const isEditing = editingId === item.audio_id
-              
+
               return (
                 <li key={item.audio_id} className="relative group">
-                  <div
-                    onClick={() => !isEditing && onSelectWorkspace(item)}
-                    className={`w-full text-left px-3 py-3 rounded-lg transition-colors cursor-pointer ${
-                      isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
-                    }`}
+                  <button
+                    onClick={() => onSelectWorkspace(item)}
+                    className={`w-full text-left px-3 py-3 rounded-lg transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                      }`}
                   >
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            if (editName.trim()) onRenameWorkspace(item.audio_id, editName.trim())
-                            setEditingId(null)
-                          } else if (e.key === 'Escape') {
-                            setEditingId(null)
-                          }
-                        }}
-                        onBlur={() => {
-                          if (editName.trim() && editName.trim() !== item.filename) {
-                            onRenameWorkspace(item.audio_id, editName.trim())
-                          }
-                          setEditingId(null)
-                        }}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full text-sm font-semibold mb-1 border-b border-blue-500 focus:outline-none bg-transparent"
-                      />
-                    ) : (
-                      <div className={`text-sm font-semibold truncate mb-1 pr-14 ${isSelected ? 'text-blue-800' : 'text-gray-800'}`}>
-                        {item.filename || 'Unknown Audio'}
-                      </div>
-                    )}
+                    <div className={`text-sm font-semibold truncate mb-1 pr-6 ${isSelected ? 'text-blue-800' : 'text-gray-800'}`}>
+                      {item.filename || 'Unknown Audio'}
+                    </div>
                     <div className="text-xs text-gray-500 flex items-center gap-2">
                       <span>{dateStr}</span>
                       <span>•</span>
                       <span>{timeStr}</span>
                       <span className="text-gray-400 ml-auto">{formatDuration(item.duration)}</span>
                     </div>
-                  </div>
-                  {!isEditing && (
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setEditingId(item.audio_id)
-                          setEditName(item.filename || 'Unknown Audio')
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                        title="Rename meeting"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onDeleteWorkspace(item.audio_id)
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-                        title="Delete meeting"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDeleteWorkspace(item.audio_id)
+                    }}
+                    className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Delete meeting"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </li>
               )
             })}
@@ -170,14 +124,14 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
 
       {/* Bottom Actions */}
       <div className="p-4 mt-auto border-t border-gray-100 space-y-2">
-        <button 
+        <button
           onClick={onHomeClick}
           className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors shadow-sm"
         >
           <Mic className="w-4 h-4" />
           Start Recording
         </button>
-        
+
         {user && (
           <div className="flex items-center justify-between pt-2">
             <div className="flex items-center gap-2 truncate">
