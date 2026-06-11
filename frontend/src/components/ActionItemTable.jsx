@@ -10,28 +10,51 @@ const formatDuration = (seconds) => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-const isAmbiguousDate = (dateStr) => {
-  if (!dateStr || !dateStr.trim()) return false;
-  // If it's a standard date format, it's not ambiguous
+const isAmbiguousDate = (deadlineValue) => {
+  // New schema: deadline is an object
+  if (deadlineValue && typeof deadlineValue === 'object') {
+    // If resolved is filled → not ambiguous
+    if (deadlineValue.resolved) return false;
+    // If confidence is low/unresolvable and no resolved → ambiguous
+    return true;
+  }
+  // Legacy: deadline is a plain string
+  if (!deadlineValue || !deadlineValue.trim()) return false;
   const isoRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
   const dateRegex1 = /^\d{4}-\d{2}-\d{2}$/;
   const dateRegex2 = /^\d{2}\/\d{2}\/\d{4}$/;
   const dateRegex3 = /^\d{2}-\d{2}-\d{4}$/;
   const dtRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
-  
-  if (isoRegex.test(dateStr) || dateRegex1.test(dateStr) || dateRegex2.test(dateStr) || dateRegex3.test(dateStr) || dtRegex.test(dateStr)) {
+  if (isoRegex.test(deadlineValue) || dateRegex1.test(deadlineValue) || dateRegex2.test(deadlineValue) || dateRegex3.test(deadlineValue) || dtRegex.test(deadlineValue)) {
     return false;
   }
-  // If it contains letters (except Z/T in iso), it's likely ambiguous (natural language)
-  return /[a-zA-Z]/i.test(dateStr);
+  return /[a-zA-Z]/i.test(deadlineValue);
+}
+
+// Extract a display string and a calendar-ready value from the (possibly object) deadline
+const extractDeadlineInfo = (deadlineValue) => {
+  if (!deadlineValue) return { display: '', calendarValue: '', isResolved: false, rawPhrase: '', confidence: null };
+  if (typeof deadlineValue === 'object') {
+    const resolved = deadlineValue.resolved || null;
+    const raw = deadlineValue.raw_phrase || '';
+    const confidence = deadlineValue.confidence || 'low';
+    return {
+      display: resolved || raw || '',
+      calendarValue: resolved || '',
+      isResolved: !!resolved,
+      rawPhrase: raw,
+      confidence,
+    };
+  }
+  // Legacy plain string
+  return { display: deadlineValue, calendarValue: deadlineValue, isResolved: false, rawPhrase: deadlineValue, confidence: null };
 }
 
 const resolveFuzzyDate = (text) => {
-  const lower = text.toLowerCase();
+  const lower = (text || '').toLowerCase();
   if (lower.includes('next friday') || lower.includes('thứ 6 tuần sau')) {
     return '10/11/2026';
   }
-  // Generic fallback for demo
   return '10/11/2026';
 }
 
@@ -48,17 +71,24 @@ export const ActionItemTable = ({ items, onSeek }) => {
 
   useEffect(() => {
     if (items) {
-      setEditableItems(items.map((item, idx) => ({
-        ...item,
-        id: idx,
-        selected: true,
-        title: item.title || item.task || '',
-        description: item.description || '',
-        note: item.note || '',
-        reference_segments: item.reference_segments || [],
-        assignee: item.assignees ? item.assignees.join(', ') : (item.assignee || item.owner || ''),
-        deadline: item.deadline || ''
-      })))
+      setEditableItems(items.map((item, idx) => {
+        const deadlineInfo = extractDeadlineInfo(item.deadline);
+        return {
+          ...item,
+          id: idx,
+          selected: true,
+          title: item.title || item.task || '',
+          description: item.description || '',
+          note: item.note || '',
+          reference_segments: item.reference_segments || [],
+          assignee: item.assignees ? item.assignees.join(', ') : (item.assignee || item.owner || ''),
+          // Flatten deadline for editable UI — keep original object too
+          deadline: deadlineInfo.display,
+          deadlineResolved: deadlineInfo.isResolved,
+          deadlineRaw: deadlineInfo.rawPhrase,
+          deadlineConfidence: deadlineInfo.confidence,
+        };
+      }))
     }
   }, [items])
 
@@ -88,9 +118,9 @@ export const ActionItemTable = ({ items, onSeek }) => {
       return
     }
 
-    const ambiguous = selectedItems.filter(item => isAmbiguousDate(item.deadline)).map(item => ({
+    const ambiguous = selectedItems.filter(item => isAmbiguousDate(item.deadline) || (!item.deadlineResolved && item.deadlineConfidence !== null)).map(item => ({
       ...item,
-      resolvedDate: resolveFuzzyDate(item.deadline)
+      resolvedDate: item.deadlineResolved ? item.deadline : resolveFuzzyDate(item.deadlineRaw || item.deadline)
     }))
 
     if (ambiguous.length > 0) {
@@ -278,14 +308,31 @@ export const ActionItemTable = ({ items, onSeek }) => {
                     </div>
                     <div className={`flex items-center gap-2 ${!item.selected && 'opacity-50'}`}>
                       <CalendarIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <input
-                        type="text"
-                        value={item.deadline || ''}
-                        onChange={(e) => handleItemChange(item.id, 'deadline', e.target.value)}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors ${item.deadline === '10/11/2026' ? 'text-green-600 font-semibold' : 'text-gray-700'} placeholder-gray-400`}
-                        placeholder="DD/MM/YYYY (vd: 10/11/2026)"
-                        disabled={!item.selected}
-                      />
+                      <div className="flex flex-col w-full">
+                        <input
+                          type="text"
+                          value={item.deadline || ''}
+                          onChange={(e) => handleItemChange(item.id, 'deadline', e.target.value)}
+                          className={`w-full bg-transparent border-0 border-b ${
+                            item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'
+                          } focus:ring-0 px-0 py-1 transition-colors ${
+                            item.deadlineResolved ? 'text-green-600 font-semibold' : 'text-amber-600'
+                          } placeholder-gray-400`}
+                          placeholder="DD/MM/YYYY or phrase"
+                          disabled={!item.selected}
+                        />
+                        {/* Confidence badge */}
+                        {item.deadlineConfidence && !item.deadlineResolved && (
+                          <span className="text-[10px] text-amber-500 mt-0.5">
+                            ⏳ Unresolved — original: "{item.deadlineRaw}"
+                          </span>
+                        )}
+                        {item.deadlineResolved && item.deadlineRaw && (
+                          <span className="text-[10px] text-green-500 mt-0.5">
+                            ✅ Resolved from: "{item.deadlineRaw}"
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </td>

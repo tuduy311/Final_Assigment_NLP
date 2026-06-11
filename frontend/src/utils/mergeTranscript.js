@@ -199,7 +199,7 @@ export const mergeTranscriptAndDiarization = (
       ? ' (low overlap)'
       : '';
 
-    return `(${formatTime(group.start)}-${formatTime(group.end)}): ${speaker}${qualifier}: ${group.text}`;
+    return `[${formatTime(group.start)}s - ${formatTime(group.end)}s]: ${speaker}${qualifier}: ${group.text}`;
   });
 
   return `Meeting transcript:\n\n${lines.join('\n\n')}`;

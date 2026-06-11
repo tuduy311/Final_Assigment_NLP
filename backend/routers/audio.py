@@ -12,11 +12,83 @@ import asyncio
 import re
 import spacy
 from collections import Counter
+from datetime import datetime, timedelta
+
+try:
+    import dateparser
+    DATEPARSER_AVAILABLE = True
+except ImportError:
+    DATEPARSER_AVAILABLE = False
 
 try:
     nlp = spacy.load('en_core_web_sm')
 except:
     nlp = None
+
+
+def resolve_deadline(deadline_obj, meeting_date_str: str = None):
+    """
+    Backend Agent: Receives the structured deadline object from LLM and
+    resolves it to an absolute YYYY-MM-DD date where possible.
+    Returns the original object with 'resolved' filled in (or left null).
+    """
+    if not isinstance(deadline_obj, dict):
+        return deadline_obj
+
+    confidence = deadline_obj.get("confidence", "low")
+    if confidence == "unresolvable":
+        deadline_obj["resolved"] = None
+        return deadline_obj
+
+    # Force reset LLM's hallucinated resolved date to ensure Backend Agent is the only authority
+    deadline_obj["resolved"] = None
+
+    anchor = deadline_obj.get("anchor") or {}
+    # Handle case where LLM returns anchor as a string instead of dict
+    if not isinstance(anchor, dict):
+        anchor = {}
+
+    anchor_type = str(anchor.get("type", "unknown"))
+    anchor_absolute = str(anchor.get("absolute_value", "")) if anchor.get("absolute_value") else None
+    
+    raw_phrase = str(deadline_obj.get("raw_phrase", ""))
+    offset = str(deadline_obj.get("offset_from_anchor", ""))
+
+    anchor = deadline_obj.get("anchor") or {}
+    anchor_type = anchor.get("type", "unknown")
+    anchor_absolute = anchor.get("absolute_value")
+    raw_phrase = deadline_obj.get("raw_phrase", "")
+    offset = deadline_obj.get("offset_from_anchor")
+
+    if not DATEPARSER_AVAILABLE:
+        return deadline_obj
+
+    try:
+        # Case 1: Anchor is an absolute date mentioned in transcript (e.g. "March 10th")
+        if anchor_type == "absolute_in_transcript" and anchor_absolute:
+            base = dateparser.parse(anchor_absolute)
+            if base and offset and offset not in ("null", "none", ""):
+                result = dateparser.parse(offset, settings={"RELATIVE_BASE": base})
+                if result:
+                    deadline_obj["resolved"] = result.strftime("%Y-%m-%d")
+                    return deadline_obj
+            elif base:
+                deadline_obj["resolved"] = base.strftime("%Y-%m-%d")
+                return deadline_obj
+
+        # Case 2: Anchor is relative to meeting date (e.g. "next Friday", "in 7 days")
+        if anchor_type == "relative_to_meeting" and meeting_date_str:
+            base = dateparser.parse(meeting_date_str)
+            if base:
+                result = dateparser.parse(raw_phrase, settings={"RELATIVE_BASE": base, "PREFER_DATES_FROM": "future"})
+                if result:
+                    deadline_obj["resolved"] = result.strftime("%Y-%m-%d")
+                    return deadline_obj
+
+    except Exception:
+        pass
+
+    return deadline_obj
 
 from typing import Optional, Dict
 from mutagen import File as MutagenFile
@@ -393,7 +465,9 @@ async def generate_summary_text(payload: SummaryRequest):
             summary_text = summary_data.get("summary", "")
             
             if user_name:
-                summary_text = summary_text.replace(user_name, "Me")
+                # Use regex with word boundaries to avoid replacing substrings (e.g., "Johnson" -> "Meson")
+                escaped_name = re.escape(user_name)
+                summary_text = re.sub(rf'\b{escaped_name}\b', 'Me', summary_text)
 
             result_json = {
                 "summary": summary_text,
@@ -438,11 +512,8 @@ async def generate_tasks(payload: SummaryRequest):
             text_to_send = payload.text
             if user_name:
                 text_to_send = re.sub(r': Me\b', f': {user_name}', text_to_send)
-                
-            # Add constraint to prevent token exhaustion
-            text_with_context = f"[System Note: Output a MAXIMUM of 3 the most relevant reference_segments per action item.]\n\n{text_to_send}"
 
-            tasks_res = await client.post(tasks_url, json={"text": text_with_context}, timeout=600.0)
+            tasks_res = await client.post(tasks_url, json={"text": text_to_send}, timeout=600.0)
             
             if tasks_res.status_code != 200:
                 raise HTTPException(status_code=tasks_res.status_code, detail=f"Tasks Error: {tasks_res.text}")
@@ -452,14 +523,25 @@ async def generate_tasks(payload: SummaryRequest):
             action_items = []
             
             try:
-                match = re.search(r'\[.*\]', tasks_raw, re.DOTALL)
-                if match:
-                    action_items = json.loads(match.group(0))
-                else:
-                    action_items = json.loads(tasks_raw)
-            except Exception as e:
-                print(f"Failed to parse tasks: {e}. Raw: {tasks_raw}")
-                
+                parsed = json.loads(tasks_raw)
+                if isinstance(parsed, dict):
+                    action_items = parsed.get("action_items", [])
+                elif isinstance(parsed, list):
+                    action_items = parsed
+            except Exception:
+                try:
+                    match = re.search(r'\{.*\}', tasks_raw, re.DOTALL)
+                    if match:
+                        action_items = json.loads(match.group(0)).get("action_items", [])
+                except Exception as e:
+                    print(f"Failed to parse tasks: {e}. Raw: {tasks_raw}")
+
+            # ── Agent Date Resolution (Pass 2) ────────────────────────────
+            meeting_date = getattr(payload, 'meeting_date', None)
+            for item in action_items:
+                if isinstance(item.get("deadline"), dict):
+                    item["deadline"] = resolve_deadline(item["deadline"], meeting_date)
+
             if user_name:
                 for item in action_items:
                     if isinstance(item.get("assignees"), list):
