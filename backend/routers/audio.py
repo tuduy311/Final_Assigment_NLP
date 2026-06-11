@@ -12,6 +12,7 @@ import asyncio
 import re
 import spacy
 from collections import Counter
+from datetime import datetime, timezone, timedelta
 
 try:
     nlp = spacy.load('en_core_web_sm')
@@ -36,6 +37,221 @@ WORKSPACE_BASE_DIR = "/tmp/audio-workspaces"
 
 # Đảm bảo thư mục workspace tồn tại
 os.makedirs(WORKSPACE_BASE_DIR, exist_ok=True)
+
+# ── Vietnam timezone ──
+VN_TZ = timezone(timedelta(hours=7))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEADLINE RESOLUTION HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+_WEEKDAY_MAP = {
+    'monday': 0, 'tuesday': 1, 'wednesday': 2,
+    'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6,
+    'mon': 0, 'tue': 1, 'wed': 2, 'thu': 3, 'fri': 4, 'sat': 5, 'sun': 6,
+}
+
+
+def _try_parse_absolute_date(date_str: str, ref: datetime) -> "datetime | None":
+    """
+    Cố gắng parse chuỗi ngày tuyệt đối như 'March 10th', 'June 15', '15/06'...
+    Trả về datetime hoặc None.
+    """
+    if not date_str:
+        return None
+    cleaned = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', date_str.strip())
+    formats = [
+        "%B %d", "%b %d", "%B %d, %Y", "%b %d, %Y",
+        "%d %B", "%d %b", "%d %B %Y", "%d %b %Y",
+        "%Y-%m-%d", "%d/%m/%Y", "%d/%m", "%m/%d",
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(cleaned, fmt)
+            if dt.year == 1900:  # format không có năm
+                dt = dt.replace(year=ref.year)
+                # Nếu ngày đã qua, giả sử năm sau
+                if dt.date() < ref.date():
+                    dt = dt.replace(year=ref.year + 1)
+            return dt
+        except ValueError:
+            continue
+    return None
+
+
+def _apply_offset(base: datetime, offset_str: str) -> "datetime | None":
+    """
+    Áp dụng offset như '+7 days', 'next Friday', '+2 weeks', 'end of week'...
+    """
+    if not offset_str:
+        return None
+    s = offset_str.strip().lower()
+
+    # +N days / +N weeks / +N months
+    m = re.match(r'[+]?\s*(\d+)\s*(day|days|week|weeks|month|months)', s)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        if 'day' in unit:
+            return base + timedelta(days=n)
+        elif 'week' in unit:
+            return base + timedelta(weeks=n)
+        elif 'month' in unit:
+            # Cộng tháng gần đúng
+            new_month = base.month + n
+            new_year = base.year + (new_month - 1) // 12
+            new_month = (new_month - 1) % 12 + 1
+            try:
+                return base.replace(year=new_year, month=new_month)
+            except ValueError:
+                # Xử lý ngày 31 không tồn tại
+                import calendar
+                last_day = calendar.monthrange(new_year, new_month)[1]
+                return base.replace(year=new_year, month=new_month, day=min(base.day, last_day))
+
+    # -N days / -N weeks
+    m = re.match(r'-\s*(\d+)\s*(day|days|week|weeks)', s)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        if 'day' in unit:
+            return base - timedelta(days=n)
+        elif 'week' in unit:
+            return base - timedelta(weeks=n)
+
+    # "next Monday", "next Friday"...
+    m = re.match(r'next\s+(\w+)', s)
+    if m:
+        day_name = m.group(1).lower()
+        if day_name in _WEEKDAY_MAP:
+            target = _WEEKDAY_MAP[day_name]
+            current = base.weekday()
+            delta = (target - current) % 7
+            if delta == 0:
+                delta = 7
+            return base + timedelta(days=delta)
+
+    # "this Friday", "this Monday"...
+    m = re.match(r'this\s+(\w+)', s)
+    if m:
+        day_name = m.group(1).lower()
+        if day_name in _WEEKDAY_MAP:
+            target = _WEEKDAY_MAP[day_name]
+            current = base.weekday()
+            delta = (target - current) % 7
+            if delta == 0:
+                delta = 0  # hôm nay
+            return base + timedelta(days=delta)
+
+    # "end of week" → Friday
+    if 'end of week' in s:
+        days_until_friday = (4 - base.weekday()) % 7
+        if days_until_friday == 0 and base.weekday() > 4:
+            days_until_friday = 7
+        return base + timedelta(days=days_until_friday)
+
+    # "end of month"
+    if 'end of month' in s:
+        import calendar
+        last_day = calendar.monthrange(base.year, base.month)[1]
+        return base.replace(day=last_day)
+
+    # "tomorrow"
+    if 'tomorrow' in s:
+        return base + timedelta(days=1)
+
+    # "today"
+    if 'today' in s:
+        return base
+
+    return None
+
+
+def _resolve_deadline_obj(dl_obj: dict, now: datetime) -> "str | None":
+    """
+    Resolve structured deadline object từ LLM thành chuỗi YYYY-MM-DD.
+    Model trả về: {raw_phrase, anchor: {type, absolute_value}, offset_from_anchor, resolved: null}
+    """
+    if not isinstance(dl_obj, dict):
+        return None
+
+    anchor = dl_obj.get("anchor") or {}
+    anchor_type = anchor.get("type", "unknown")
+    absolute_value = anchor.get("absolute_value")
+    offset = dl_obj.get("offset_from_anchor")
+    raw_phrase = dl_obj.get("raw_phrase")
+
+    base_date = None
+
+    if anchor_type == "meeting_date":
+        base_date = now
+    elif anchor_type == "absolute_in_transcript" and absolute_value:
+        base_date = _try_parse_absolute_date(absolute_value, now)
+        # Nếu không parse được absolute_value, fallback tìm trong raw_phrase
+        if base_date is None and raw_phrase:
+            base_date = _try_parse_absolute_date(raw_phrase, now)
+    elif anchor_type == "event_in_transcript":
+        # Không thể resolve event-based anchor
+        return None
+    else:
+        # unknown — thử parse raw_phrase
+        if raw_phrase:
+            parsed = _try_parse_absolute_date(raw_phrase, now)
+            if parsed:
+                return parsed.strftime("%Y-%m-%d")
+        return None
+
+    # Áp dụng offset nếu có
+    if base_date and offset:
+        resolved = _apply_offset(base_date, offset)
+        if resolved:
+            return resolved.strftime("%Y-%m-%d")
+
+    # Trả về base_date nếu không có offset
+    if base_date:
+        return base_date.strftime("%Y-%m-%d")
+
+    return None
+
+
+def _process_action_item_deadlines(action_items: list) -> list:
+    """
+    Duyệt qua từng action item, resolve deadline object thành chuỗi ngày.
+    Giữ nguyên deadline_info gốc để frontend có thể hiển thị chi tiết.
+    """
+    now = datetime.now(VN_TZ)
+
+    for item in action_items:
+        dl = item.get("deadline")
+
+        if dl is None:
+            item["deadline"] = ""
+            item["deadline_info"] = None
+            continue
+
+        if isinstance(dl, str):
+            # Đã là string rồi, giữ nguyên
+            item["deadline_info"] = {"raw_phrase": dl}
+            continue
+
+        if isinstance(dl, dict):
+            # Lưu thông tin gốc
+            item["deadline_info"] = dl
+
+            # Resolve sang YYYY-MM-DD
+            resolved = _resolve_deadline_obj(dl, now)
+            if resolved:
+                dl["resolved"] = resolved
+                item["deadline"] = resolved
+            else:
+                # Fallback: dùng raw_phrase
+                item["deadline"] = dl.get("raw_phrase") or ""
+        else:
+            item["deadline"] = ""
+            item["deadline_info"] = None
+
+    return action_items
 
 
 class SpeakerMapRequest(BaseModel):
@@ -130,11 +346,7 @@ async def generate_transcript(audio_id: str, metrics_service: MetricsService = D
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, detail=f"Transcribe Error: {response.text}")
                 
-            try:
-                result_stt = response.json()
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to parse JSON from Model Service. Raw response: '{response.text}'. Error: {e}")
-
+            result_stt = response.json()
             
             # Extract suggested names using spacy
             try:
@@ -460,6 +672,9 @@ async def generate_tasks(payload: SummaryRequest):
             except Exception as e:
                 print(f"Failed to parse tasks: {e}. Raw: {tasks_raw}")
                 
+            # Resolve structured deadline objects → YYYY-MM-DD strings
+            action_items = _process_action_item_deadlines(action_items)
+
             if user_name:
                 for item in action_items:
                     if isinstance(item.get("assignees"), list):
@@ -563,23 +778,35 @@ async def get_audio_results(audio_id: str):
 
 @router.get("/{audio_id}/file")
 async def get_audio_file(audio_id: str):
-    """Phục vụ file âm thanh."""
+    """Serve file audio từ workspace để frontend có thể phát lại."""
     workspace_dir = os.path.join(WORKSPACE_BASE_DIR, audio_id)
     if not os.path.exists(workspace_dir):
         raise HTTPException(status_code=404, detail="Audio workspace not found")
-        
+
     metadata_path = os.path.join(workspace_dir, "metadata.json")
     if not os.path.exists(metadata_path):
         raise HTTPException(status_code=404, detail="Metadata not found")
-        
+
     with open(metadata_path, "r", encoding="utf-8") as f:
-        metadata = json.load(f)
-        
-    file_path = os.path.join(workspace_dir, metadata["filename"])
+        meta = json.load(f)
+
+    file_path = os.path.join(workspace_dir, meta["filename"])
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Audio file not found")
-        
-    return FileResponse(file_path)
+
+    # Determine media type from extension
+    ext = os.path.splitext(meta["filename"])[1].lower()
+    media_types = {
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.m4a': 'audio/mp4',
+        '.ogg': 'audio/ogg',
+        '.flac': 'audio/flac',
+        '.webm': 'audio/webm',
+    }
+    media_type = media_types.get(ext, 'application/octet-stream')
+
+    return FileResponse(file_path, media_type=media_type, filename=meta["filename"])
 
 @router.delete("/{audio_id}")
 async def delete_audio_workspace(audio_id: str):

@@ -114,7 +114,11 @@ KEY DECISIONS
 ${data.decisions?.join('\n') || 'None'}
 
 ACTION ITEMS
-${data.action_items?.map((item) => `- ${item.task} (Owner: ${item.owner}, Deadline: ${item.deadline})`).join('\n') || 'None'}
+${data.action_items?.map((item) => {
+              const dl = item.deadline;
+              const deadlineStr = typeof dl === 'object' && dl ? (dl.resolved || dl.raw_phrase || '') : (dl || '');
+              return `- ${item.title || item.task} (Owner: ${item.assignees ? item.assignees.join(', ') : (item.owner || 'N/A')}, Deadline: ${deadlineStr || 'N/A'})`;
+            }).join('\n') || 'None'}
 
 TRANSCRIPT
 ${data.transcript}
