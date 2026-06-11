@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react'
-import { CheckCircle2, Calendar as CalendarIcon, User, PlusCircle, Loader2, AlignLeft, Clock } from 'lucide-react'
-import { createCalendarEvents } from '../services/api'
+import React, { useState, useEffect } from 'react';
+import { CheckCircle2, Calendar as CalendarIcon, User, PlusCircle, Loader2, AlignLeft, Clock } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useCalendarSyncAgent, SYNC_STATES } from '../agents/calendarSyncAgent';
+import { CalendarSyncDialog } from './CalendarSyncDialog';
+import { CalendarSyncResult } from './CalendarSyncResult';
+import { CalendarSyncDeadlinePanel } from './CalendarSyncDeadlinePanel';
 
 // Helper function formatDuration to format seconds into MM:SS
 const formatDuration = (seconds) => {
@@ -10,21 +14,31 @@ const formatDuration = (seconds) => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-// Helper: extract displayable deadline string from model's deadline (string or object)
-const extractDeadline = (dl) => {
-  if (!dl) return '';
-  if (typeof dl === 'string') return dl;
-  if (typeof dl === 'object') {
-    // Model trả về: { resolved, raw_phrase, reasoning, anchor, offset_from_anchor, confidence }
-    return dl.resolved || dl.raw_phrase || '';
-  }
-  return '';
-};
+// No longer needed: isAmbiguousDate and resolveFuzzyDate were removed since Backend Agent handles all date logic.
 
-export const ActionItemTable = ({ items, onSeek }) => {
-  const [isSyncing, setIsSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState(null)
-  const [editableItems, setEditableItems] = useState([])
+// Extract a display string and a calendar-ready value from the (possibly object) deadline
+const extractDeadlineInfo = (deadlineValue) => {
+  if (!deadlineValue) return { display: '', calendarValue: '', isResolved: false, rawPhrase: '', confidence: null };
+  if (typeof deadlineValue === 'object') {
+    const resolved = deadlineValue.resolved || null;
+    const raw = deadlineValue.raw_phrase || '';
+    const confidence = deadlineValue.confidence || 'low';
+    return {
+      display: resolved || raw || '',
+      calendarValue: resolved || '',
+      isResolved: !!resolved,
+      rawPhrase: raw,
+      confidence,
+    };
+  }
+  // Legacy plain string
+  return { display: deadlineValue, calendarValue: deadlineValue, isResolved: false, rawPhrase: deadlineValue, confidence: null };
+}
+
+export const ActionItemTable = ({ items, onSeek, userName }) => {
+  const { user } = useAuth();
+  const agent = useCalendarSyncAgent();
+  const [editableItems, setEditableItems] = useState([]);
 
   useEffect(() => {
     if (items) {
@@ -58,9 +72,19 @@ export const ActionItemTable = ({ items, onSeek }) => {
   }
 
   const handleItemChange = (id, field, value) => {
-    setEditableItems(prev => prev.map(item =>
-      item.id === id ? { ...item, [field]: value } : item
-    ))
+    setEditableItems(prev => prev.map(item => {
+      if (item.id === id) {
+        let updates = { [field]: value };
+        // If user manually edits deadline, mark it as resolved and clear the old warning
+        if (field === 'deadline') {
+          updates.deadlineResolved = true;
+          updates.deadlineRaw = value;
+          updates.deadlineConfidence = null;
+        }
+        return { ...item, ...updates };
+      }
+      return item;
+    }))
   }
 
   const toggleSelectAll = () => {
@@ -69,88 +93,41 @@ export const ActionItemTable = ({ items, onSeek }) => {
   }
 
   const handleSyncCalendar = async () => {
-    const selectedItems = editableItems.filter(item => item.selected)
+    const selectedItems = editableItems.filter(item => item.selected);
     if (selectedItems.length === 0) {
-      alert('Vui lòng chọn ít nhất 1 công việc để thêm vào lịch.')
-      return
+      alert('Vui lòng chọn ít nhất 1 công việc để thêm vào lịch.');
+      return;
+    }
+    if (!user?.token) {
+      alert('Vui lòng đăng nhập Google để đồng bộ lịch.');
+      return;
     }
 
-    const ambiguous = selectedItems.filter(item => isAmbiguousDate(item.deadline) || (!item.deadlineResolved && item.deadlineConfidence !== null)).map(item => ({
-      ...item,
-      resolvedDate: item.deadlineResolved ? item.deadline : resolveFuzzyDate(item.deadlineRaw || item.deadline)
-    }))
+    // Run the agent!
+    await agent.run(selectedItems, userName, user.token);
+  };
 
-    if (ambiguous.length > 0) {
-      setPendingSyncItems([...selectedItems])
-      setAmbiguousTasks(ambiguous)
-      setCurrentAmbiguousIndex(0)
-      setAgentSyncState('asking')
-      return 
-    }
-
-    await proceedToSync(selectedItems)
-  }
-
-  const handleAgentResponse = (agreed) => {
-    const currentAmbiguous = ambiguousTasks[currentAmbiguousIndex]
-    
-    let updatedPending = [...pendingSyncItems]
-    if (agreed) {
-      // update in UI as well
-      setEditableItems(prev => prev.map(item => 
-        item.id === currentAmbiguous.id ? { ...item, deadline: currentAmbiguous.resolvedDate } : item
-      ))
-      // update in pending array
-      updatedPending = updatedPending.map(item => 
-        item.id === currentAmbiguous.id ? { ...item, deadline: currentAmbiguous.resolvedDate } : item
-      )
-      setPendingSyncItems(updatedPending)
-    }
-
-    if (currentAmbiguousIndex < ambiguousTasks.length - 1) {
-      setCurrentAmbiguousIndex(prev => prev + 1)
-      setPendingSyncItems(updatedPending)
-    } else {
-      // all done
-      setAgentSyncState('idle')
-      proceedToSync(updatedPending)
-    }
-  }
-
-  const proceedToSync = async (itemsToSync) => {
-    setIsSyncing(true)
-    setSyncResult(null)
-    try {
-      const events = selectedItems.map(item => ({
-        title: item.title || 'Action Item',
-        description: `${item.description || ''}\n\nOwner: ${item.assignee || 'Unassigned'}\nNote: ${item.note || ''}`,
-        deadline: item.deadline || new Date().toISOString()
-      }))
-      const response = await createCalendarEvents(events)
-
-      if (response.failed && response.failed.length > 0) {
-        console.error('Failed to sync some events:', response.failed)
-        alert(`Failed to sync some tasks to Google Calendar:\n\n${response.failed.map(f => `- ${f.title}: ${f.error}`).join('\n')}`)
-        if (response.created && response.created.length > 0) {
-          setSyncResult('success')
-        } else {
-          setSyncResult('error')
-        }
-      } else {
-        setSyncResult('success')
-      }
-    } catch (err) {
-      console.error('Failed to sync to calendar:', err)
-      setSyncResult('error')
-    } finally {
-      setIsSyncing(false)
-      setTimeout(() => setSyncResult(null), 3000)
-    }
-  }
+  const isSyncing = agent.state !== SYNC_STATES.IDLE && agent.state !== SYNC_STATES.DONE && agent.state !== SYNC_STATES.ERROR;
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <CalendarSyncDeadlinePanel agent={agent} />
+      <CalendarSyncDialog agent={agent} />
+      {agent.result && <CalendarSyncResult result={agent.result} onClose={() => agent.run([], '', '')} />}
+
+      <div className="flex justify-between items-center">
+        <div className="text-sm">
+          {isSyncing && agent.progress.phase && (
+            <span className="text-indigo-600 font-medium flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {agent.progress.phase} {agent.progress.total > 0 ? `(${agent.progress.current}/${agent.progress.total})` : ''}
+            </span>
+          )}
+          {agent.state === SYNC_STATES.ERROR && (
+            <span className="text-rose-500 font-medium">{agent.errorMsg}</span>
+          )}
+        </div>
+
         <button
           onClick={handleSyncCalendar}
           disabled={isSyncing}
@@ -158,12 +135,12 @@ export const ActionItemTable = ({ items, onSeek }) => {
         >
           {isSyncing ? (
             <Loader2 className="w-4 h-4 animate-spin" />
-          ) : syncResult === 'success' ? (
+          ) : agent.state === SYNC_STATES.DONE ? (
             <CheckCircle2 className="w-4 h-4 text-green-500" />
           ) : (
             <PlusCircle className="w-4 h-4" />
           )}
-          {isSyncing ? 'Syncing...' : syncResult === 'success' ? 'Synced!' : 'Add to Google Calendar'}
+          {isSyncing ? 'Đang đồng bộ...' : agent.state === SYNC_STATES.DONE ? 'Hoàn tất!' : 'Thêm vào Google Calendar'}
         </button>
       </div>
 

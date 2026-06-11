@@ -455,7 +455,7 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
               </div>
               <div>
                 <h4 className="text-lg font-semibold mb-2">Action Items</h4>
-                <ActionItemTable items={summaryResult.action_items || []} onSeek={handleSeek} />
+                <ActionItemTable items={summaryResult.action_items || []} onSeek={handleSeek} userName={userName} />
               </div>
             </div>
           </ResultSection>

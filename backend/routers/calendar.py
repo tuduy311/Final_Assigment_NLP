@@ -1,8 +1,12 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import httpx
 from datetime import datetime, timezone, timedelta
+import os
+import json
+
+MODEL_SERVICE_BASE_URL = os.getenv("MODEL_SERVICE_BASE_URL", "http://localhost:5000")
 
 router = APIRouter(
     prefix="/calendar",
@@ -233,3 +237,93 @@ async def get_calendar_events(request: Request):
                 status_code=503,
                 detail=f"Không kết nối được Google Calendar API: {exc}"
             )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AGENTIC SYNC: LLM Deduplication
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CandidatePair(BaseModel):
+    task_id: int
+    task_title: str
+    task_deadline: str
+    event_id: str
+    event_title: str
+    event_start: str
+
+class CheckConflictsRequest(BaseModel):
+    candidate_pairs: List[CandidatePair]
+
+@router.post("/check-conflicts")
+async def check_conflicts(payload: CheckConflictsRequest):
+    """
+    So sánh các cặp (task, event) đáng ngờ (candidate pairs) bằng LLM.
+    Chỉ trả về các cặp thực sự trùng lặp hoặc cần dời ngày.
+    """
+    if not payload.candidate_pairs:
+        return {"conflicts": []}
+
+    prompt = f"""
+You are a calendar conflict detector.
+You are given a list of candidate pairs representing a new action item (task) and an existing calendar event.
+Compare each pair and determine if they refer to the same logical task.
+
+Rules:
+- A 2-day or less date difference with same topic = DUPLICATE
+- Same topic, different dates beyond 2 days = RELATED
+- Omit DIFFERENT pairs entirely
+
+Return ONLY valid JSON in this format — no markdown, no explanation:
+{{
+  "conflicts": [
+    {{
+      "task_id": <int>,
+      "event_id": "<string>",
+      "verdict": "DUPLICATE" | "RELATED",
+      "reason": "<one concise sentence>",
+      "suggested_action": "skip" | "ask_reschedule"
+    }}
+  ]
+}}
+
+Pairs to check:
+{json.dumps([p.dict() for p in payload.candidate_pairs], ensure_ascii=False, indent=2)}
+    """
+
+    try:
+        async with httpx.AsyncClient() as client:
+            llm_url = f"{MODEL_SERVICE_BASE_URL}/generate/tasks"  # Using generic generate endpoint if available, assuming it returns JSON. 
+            # Note: We send it to /generate/tasks but with a custom prompt inside text. 
+            # Since Kaggle endpoint /generate/tasks expects {"text": ...}
+            
+            res = await client.post(
+                llm_url,
+                json={"text": prompt},
+                timeout=60.0
+            )
+
+            if res.status_code != 200:
+                print(f"LLM Error: {res.text}")
+                return {"conflicts": []}
+
+            # The Kaggle endpoint returns {"action_items": [...]} or similar. 
+            # Wait, if we instruct it to return {"conflicts": ...}, the model might just output it.
+            # Let's extract the JSON block.
+            text_res = res.json()
+            if isinstance(text_res, dict) and "conflicts" in text_res:
+                return {"conflicts": text_res["conflicts"]}
+            
+            # If the response is wrapped in 'text' or something
+            raw_text = text_res.get("text", "") or text_res.get("summary", "") or str(text_res)
+            
+            # Extract JSON from raw_text
+            import re
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group(0))
+                return {"conflicts": parsed.get("conflicts", [])}
+            
+            return {"conflicts": []}
+
+    except Exception as e:
+        print(f"Error calling LLM for check-conflicts: {e}")
+        return {"conflicts": []}
