@@ -268,9 +268,9 @@ You are given a list of candidate pairs representing a new action item (task) an
 Compare each pair and determine if they refer to the same logical task.
 
 Rules:
-- A 2-day or less date difference with same topic = DUPLICATE
-- Same topic, different dates beyond 2 days = RELATED
-- Omit DIFFERENT pairs entirely
+- Same topic AND same date = DUPLICATE (suggest: skip or patch)
+- Same topic BUT different dates = RELATED (suggest: ask_reschedule)
+- Different topic entirely = omit from results
 
 Return ONLY valid JSON in this format — no markdown, no explanation:
 {{
@@ -291,9 +291,7 @@ Pairs to check:
 
     try:
         async with httpx.AsyncClient() as client:
-            llm_url = f"{MODEL_SERVICE_BASE_URL}/generate/tasks"  # Using generic generate endpoint if available, assuming it returns JSON. 
-            # Note: We send it to /generate/tasks but with a custom prompt inside text. 
-            # Since Kaggle endpoint /generate/tasks expects {"text": ...}
+            llm_url = f"{MODEL_SERVICE_BASE_URL}/generate/check-conflicts"
             
             res = await client.post(
                 llm_url,
@@ -308,19 +306,44 @@ Pairs to check:
             # The Kaggle endpoint returns {"action_items": [...]} or similar. 
             # Wait, if we instruct it to return {"conflicts": ...}, the model might just output it.
             # Let's extract the JSON block.
-            text_res = res.json()
-            if isinstance(text_res, dict) and "conflicts" in text_res:
-                return {"conflicts": text_res["conflicts"]}
-            
-            # If the response is wrapped in 'text' or something
-            raw_text = text_res.get("text", "") or text_res.get("summary", "") or str(text_res)
-            
-            # Extract JSON from raw_text
             import re
+            
+            try:
+                # Dùng res.json() trước, nó có thể throw lỗi nếu parse JSON có leading b" "
+                text_res = res.json()
+            except Exception:
+                text_res = res.text
+
+            raw_text = ""
+            
+            if isinstance(text_res, dict):
+                if "conflicts" in text_res:
+                    llm_val = text_res["conflicts"]
+                    if isinstance(llm_val, dict):
+                        return {"conflicts": llm_val.get("conflicts", [])}
+                    elif isinstance(llm_val, list):
+                        return {"conflicts": llm_val}
+                    elif isinstance(llm_val, str):
+                        raw_text = llm_val
+                else:
+                    # Fallback if wrapped differently
+                    raw_text = text_res.get("text", "") or text_res.get("summary", "") or str(text_res)
+            elif isinstance(text_res, str):
+                raw_text = text_res
+                
+            # Trích xuất đoạn JSON từ chuỗi string LLM sinh ra
             json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
             if json_match:
-                parsed = json.loads(json_match.group(0))
-                return {"conflicts": parsed.get("conflicts", [])}
+                try:
+                    parsed = json.loads(json_match.group(0))
+                    return {"conflicts": parsed.get("conflicts", [])}
+                except Exception as ex:
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(json_match.group(0))
+                        return {"conflicts": parsed.get("conflicts", [])}
+                    except Exception as ast_ex:
+                        print(f"Failed to parse inner JSON from LLM: {ex} / AST: {ast_ex}")
             
             return {"conflicts": []}
 

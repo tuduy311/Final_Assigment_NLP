@@ -61,7 +61,8 @@ export const heuristicFilter = (myTasks, existingEvents, threshold = 0.3) => {
   const candidates = [];
 
   for (const task of myTasks) {
-    const taskTokens = tokenize(task.title);
+    const taskText = `${task.title || ''} ${task.description || ''} ${task.note || ''}`;
+    const taskTokens = tokenize(taskText);
     const taskDate = new Date(
       String(task.deadline || '')
         .replace(/^(\d{2})\/(\d{2})\/(\d{4})$/, '$3-$2-$1')
@@ -69,11 +70,14 @@ export const heuristicFilter = (myTasks, existingEvents, threshold = 0.3) => {
     ).getTime() || 0;
 
     const scored = existingEvents
-      .map(event => ({
-        task,
-        event,
-        score: jaccard(taskTokens, tokenize(event.summary || '')),
-      }))
+      .map(event => {
+        const eventText = `${event.summary || ''} ${event.description || ''}`;
+        return {
+          task,
+          event,
+          score: jaccard(taskTokens, tokenize(eventText)),
+        };
+      })
       .filter(p => p.score >= threshold)
       .sort((a, b) => {
         // Primary: higher score first

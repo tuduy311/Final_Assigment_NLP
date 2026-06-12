@@ -7,6 +7,7 @@
 import { fetchEvents } from '../googleCalendarApi.js';
 
 const BUFFER_DAYS = 30;
+const LOOKBACK_DAYS = 14; // Nhìn lại 14 ngày trước deadline sớm nhất để bắt duplicate gần đây
 
 /**
  * Compute the time window for fetching calendar events.
@@ -32,8 +33,13 @@ export const computeTimeWindow = (myTasks) => {
   const timeMin = timestamps.length > 0
     ? new Date(Math.min(...timestamps))
     : new Date();
+  
+  // Nhìn lùi thêm LOOKBACK_DAYS để bắt các event trước deadline (ví dụ task ngày 17 nhưng event cũ nằm ở ngày 15)
+  timeMin.setDate(timeMin.getDate() - LOOKBACK_DAYS);
 
-  const timeMax = new Date(timeMin);
+  const timeMax = new Date(
+    timestamps.length > 0 ? Math.min(...timestamps) : Date.now()
+  );
   timeMax.setDate(timeMax.getDate() + BUFFER_DAYS);
 
   return { timeMin, timeMax };

@@ -36,7 +36,7 @@ const extractDeadlineInfo = (deadlineValue) => {
 }
 
 export const ActionItemTable = ({ items, onSeek, userName }) => {
-  const { user } = useAuth();
+  const { user, accessToken } = useAuth();
   const agent = useCalendarSyncAgent();
   const [editableItems, setEditableItems] = useState([]);
 
@@ -98,13 +98,13 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
       alert('Vui lòng chọn ít nhất 1 công việc để thêm vào lịch.');
       return;
     }
-    if (!user?.token) {
+    if (!accessToken) {
       alert('Vui lòng đăng nhập Google để đồng bộ lịch.');
       return;
     }
 
     // Run the agent!
-    await agent.run(selectedItems, userName, user.token);
+    await agent.run(selectedItems, userName, accessToken);
   };
 
   const isSyncing = agent.state !== SYNC_STATES.IDLE && agent.state !== SYNC_STATES.DONE && agent.state !== SYNC_STATES.ERROR;
@@ -113,7 +113,7 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
     <div className="space-y-4">
       <CalendarSyncDeadlinePanel agent={agent} />
       <CalendarSyncDialog agent={agent} />
-      {agent.result && <CalendarSyncResult result={agent.result} onClose={() => agent.run([], '', '')} />}
+      {agent.result && <CalendarSyncResult result={agent.result} onClose={() => agent.reset()} />}
 
       <div className="flex justify-between items-center">
         <div className="text-sm">
@@ -277,9 +277,6 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
           </tbody>
         </table>
       </div>
-      {syncResult === 'error' && (
-        <p className="text-sm text-red-500 text-right">Failed to sync to Google Calendar.</p>
-      )}
     </div>
   )
 }

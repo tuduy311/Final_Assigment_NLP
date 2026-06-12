@@ -104,7 +104,15 @@ const ConflictDialog = ({ conflict, respond }) => {
     return d < today;
   };
 
-  const isDuplicate = conflict.verdict === 'DUPLICATE';
+  // Chỉ PATCH nếu task và event trùng CÙNG ngày. Khác ngày → luôn RESCHEDULE (dù LLM bảo DUPLICATE)
+  const normalizeDate = (str) => {
+    if (!str) return '';
+    // YYYY-MM-DD or ISO datetime
+    return String(str).replace(/T.*$/, '').replace(/^(\d{2})\/(\d{2})\/(\d{4})$/, '$3-$2-$1');
+  };
+  const taskDate = normalizeDate(conflict.task.deadline);
+  const eventDate = normalizeDate(conflict.event?.start?.date || conflict.event?.start?.dateTime);
+  const isDuplicate = conflict.verdict === 'DUPLICATE' && taskDate === eventDate;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

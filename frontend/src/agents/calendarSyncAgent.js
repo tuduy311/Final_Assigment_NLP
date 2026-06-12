@@ -24,7 +24,7 @@ export const useCalendarSyncAgent = () => {
   const [state, setState] = useState(SYNC_STATES.IDLE);
   const [progress, setProgress] = useState({ phase: '', current: 0, total: 0 });
   const [errorMsg, setErrorMsg] = useState('');
-  
+
   // Dialog States
   const [pendingDeadlines, setPendingDeadlines] = useState([]);
   const [pendingOwnership, setPendingOwnership] = useState(null); // task object
@@ -90,27 +90,27 @@ export const useCalendarSyncAgent = () => {
       // PHASE 0: Pre-Sync (Deadlines)
       const missingDeadlines = selectedItems.filter(t => !t.deadlineResolved);
       const ready = selectedItems.filter(t => t.deadlineResolved);
-      
+
       memory.current.readyTasks = [...ready];
 
       if (missingDeadlines.length > 0) {
         setState(SYNC_STATES.COLLECTING_DEADLINES);
         setPendingDeadlines(missingDeadlines);
-        await awaitDialog(); 
+        await awaitDialog();
         // Dialog will resolve this when user finishes filling or skipping all
       }
 
       // NODE 1: Pre-flight Validator
       const { valid, invalidTasks } = preflightValidator(memory.current.readyTasks);
       if (!valid) {
-        const titles = invalidTasks.map(i => `• ${i.title || 'Action Item'}`).join('\n');
-        abort(`ĐỒNG BỘ THẤT BẠI!\n\nCác công việc sau đang sai định dạng:\n${titles}\n\nVui lòng sửa lại ngày.`);
+        const titles = invalidTasks.map(i => `• ${i.title || 'Action Item'}: "${i.deadline}"`).join('\n');
+        abort(`ĐỒNG BỘ THẤT BẠI!\n\nCác công việc sau đang sai định dạng ngày:\n${titles}\n\nVui lòng sửa lại.`);
         return;
       }
 
       // NODE 2: Me Filter
       let { myTasks, nullAssigneeTasks } = partitionTasks(memory.current.readyTasks, userName);
-      
+
       // Resolve null assignees
       for (const task of nullAssigneeTasks) {
         setState(SYNC_STATES.ASKING_OWNERSHIP);
@@ -139,7 +139,7 @@ export const useCalendarSyncAgent = () => {
       // NODE 3: Fetch Events
       setState(SYNC_STATES.FETCHING);
       updateProgress('Fetching calendar events...', 0, 1);
-      
+
       let existingEvents;
       try {
         existingEvents = await fetchRelevantEvents(googleToken, myTasks);
@@ -171,18 +171,18 @@ export const useCalendarSyncAgent = () => {
         for (let i = 0; i < memory.current.conflicts.length; i++) {
           const conflict = memory.current.conflicts[i];
           updateProgress('Resolving conflicts...', i + 1, memory.current.conflicts.length);
-          
+
           setPendingConflict(conflict);
           const decision = await awaitDialog(); // { intent, date? }
-          
+
           if (decision.intent === 'RESCHEDULE' && decision.date) {
             // Update the task's deadline so the Executor uses the new date
             conflict.task.deadline = decision.date;
           }
-          
+
           memory.current.conflictDecisions.set(conflict.task.id, {
             intent: decision.intent,
-            existingEventId: conflict.event_id,
+            existingEventId: conflict.event?.id || conflict.event_id,
           });
         }
         setPendingConflict(null);
@@ -194,8 +194,8 @@ export const useCalendarSyncAgent = () => {
       // NODE 7 & 8: Executor & Result Aggregator
       setState(SYNC_STATES.EXECUTING);
       const executionResult = await executeAndAggregate(
-        googleToken, 
-        finalPlan, 
+        googleToken,
+        finalPlan,
         (curr, tot) => updateProgress('Syncing to calendar...', curr, tot)
       );
 
@@ -244,8 +244,21 @@ export const useCalendarSyncAgent = () => {
     if (memory.current.resolvePromise) memory.current.resolvePromise({ intent, date: newDate });
   };
 
+  const reset = () => {
+    setState(SYNC_STATES.IDLE);
+    setErrorMsg('');
+    setResult(null);
+    setProgress({ phase: '', current: 0, total: 0 });
+    setPendingDeadlines([]);
+    setPendingOwnership(null);
+    setPendingEmptyFilter(false);
+    setPendingConflict(null);
+    memory.current.resolvePromise = null;
+  };
+
   return {
     run,
+    reset,
     state,
     progress,
     errorMsg,
