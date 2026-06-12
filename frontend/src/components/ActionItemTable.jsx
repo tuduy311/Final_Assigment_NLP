@@ -39,28 +39,37 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
   const { user, accessToken } = useAuth();
   const agent = useCalendarSyncAgent();
   const [editableItems, setEditableItems] = useState([]);
+  // Track the last source items by a stable key so we don't reset user edits on every re-render
+  const lastItemsKeyRef = React.useRef(null);
 
   useEffect(() => {
-    if (items) {
-      setEditableItems(items.map((item, idx) => {
-        const deadlineInfo = extractDeadlineInfo(item.deadline);
-        return {
-          ...item,
-          id: idx,
-          selected: true,
-          title: item.title || item.task || '',
-          description: item.description || '',
-          note: item.note || '',
-          reference_segments: item.reference_segments || [],
-          assignee: item.assignees ? item.assignees.join(', ') : (item.assignee || item.owner || ''),
-          // Flatten deadline for editable UI — keep original object too
-          deadline: deadlineInfo.display,
-          deadlineResolved: deadlineInfo.isResolved,
-          deadlineRaw: deadlineInfo.rawPhrase,
-          deadlineConfidence: deadlineInfo.confidence,
-        };
-      }))
-    }
+    if (!items) return;
+    // Build a stable key from the item content to avoid resetting edits on re-renders
+    const key = JSON.stringify(items.map(i => ({
+      t: i.title || i.task,
+      d: i.deadline,
+      a: i.assignee || i.assignees,
+    })));
+    if (key === lastItemsKeyRef.current) return; // Same data → don't reset user edits
+    lastItemsKeyRef.current = key;
+
+    setEditableItems(items.map((item, idx) => {
+      const deadlineInfo = extractDeadlineInfo(item.deadline);
+      return {
+        ...item,
+        id: idx,
+        selected: true,
+        title: item.title || item.task || '',
+        description: item.description || '',
+        note: item.note || '',
+        reference_segments: item.reference_segments || [],
+        assignee: item.assignees ? item.assignees.join(', ') : (item.assignee || item.owner || ''),
+        deadline: deadlineInfo.display,
+        deadlineResolved: deadlineInfo.isResolved,
+        deadlineRaw: deadlineInfo.rawPhrase,
+        deadlineConfidence: deadlineInfo.confidence,
+      };
+    }));
   }, [items])
 
   if (!items || items.length === 0) {
