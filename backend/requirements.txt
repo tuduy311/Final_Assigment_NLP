@@ -7,3 +7,4 @@ mutagen>=1.47.0
 pydantic-settings>=2.0.0
 jiwer>=3.0.3
 spacy
+google-genai

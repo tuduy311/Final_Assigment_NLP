@@ -6,6 +6,7 @@ import ActionItemTable from './ActionItemTable'
 import ReactMarkdown from 'react-markdown'
 import SpeakerTimeline from './SpeakerTimeline'
 import AudioPlayer from './AudioPlayer'
+import AgentChat from './AgentChat'
 
 const formatDuration = (seconds) => {
   if (seconds === undefined || seconds === null) return '00:00:000';
@@ -577,6 +578,13 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
               </div>
             )}
           </ResultSection>
+        )}
+
+        {/* Agent Chat Section */}
+        {workspaceData?.audio_id && (
+          <div className="mt-8">
+            <AgentChat audioId={workspaceData.audio_id} />
+          </div>
         )}
       </div>
     </div>

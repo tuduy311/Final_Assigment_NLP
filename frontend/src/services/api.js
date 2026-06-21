@@ -135,3 +135,9 @@ export const saveSpeakerMap = async (audioId, speakerMap) => {
 export const getAudioFileUrl = (audioId) => `/api/v1/audio/${audioId}/file`
 
 export default api
+
+export const sendAgentMessage = async (audioId, message, history) => {
+  const payload = { audio_id: audioId, message, history }
+  const response = await api.post('/v1/agent/chat', payload)
+  return response.data
+}

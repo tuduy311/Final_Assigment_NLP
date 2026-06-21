@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import audio, calendar, metrics
+from routers import audio, calendar, metrics, agent
 import uvicorn
 
 
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(audio.router, prefix="/api/v1")
 app.include_router(calendar.router, prefix="/api/v1")
 app.include_router(metrics.router, prefix="/api/v1")
+app.include_router(agent.router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
