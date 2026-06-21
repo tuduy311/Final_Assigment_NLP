@@ -32,7 +32,7 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
           <div className="w-3 h-3 rounded-full bg-red-400"></div>
           <div className="w-3 h-3 rounded-full bg-amber-400"></div>
           <div className="w-3 h-3 rounded-full bg-green-400"></div>
-          <span className="ml-2 font-semibold text-gray-700">Meetily Pro</span>
+          <span className="ml-2 font-semibold text-gray-700">Smart Assistant</span>
         </div>
       </div>
 

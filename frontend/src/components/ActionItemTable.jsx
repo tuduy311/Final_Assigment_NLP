@@ -219,27 +219,26 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
                     </div>
                     <div className={`flex items-center gap-2 ${!item.selected && 'opacity-50'}`}>
                       <CalendarIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <div className="flex flex-col w-full">
+                      <div className="flex flex-col w-full gap-1">
                         <input
-                          type="text"
-                          value={item.deadline || ''}
+                          type="date"
+                          value={item.deadlineResolved ? item.deadline : ''}
                           onChange={(e) => handleItemChange(item.id, 'deadline', e.target.value)}
-                          className={`w-full bg-transparent border-0 border-b ${
-                            item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'
-                          } focus:ring-0 px-0 py-1 transition-colors ${
-                            item.deadlineResolved ? 'text-green-600 font-semibold' : 'text-amber-600'
+                          className={`w-full border rounded-md px-3 py-1.5 ${
+                            item.selected ? 'bg-white hover:border-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' : 'bg-transparent border-transparent'
+                          } transition-colors ${
+                            item.deadlineResolved ? 'text-green-700 font-medium' : 'text-gray-500'
                           } placeholder-gray-400`}
-                          placeholder="DD/MM/YYYY or phrase"
                           disabled={!item.selected}
                         />
                         {/* Confidence badge */}
                         {item.deadlineConfidence && !item.deadlineResolved && (
-                          <span className="text-[10px] text-amber-500 mt-0.5">
-                            ⏳ Unresolved — original: "{item.deadlineRaw}"
+                          <span className="text-[11px] text-amber-600 font-medium">
+                            ⏳ Unresolved: "{item.deadlineRaw}"
                           </span>
                         )}
                         {item.deadlineResolved && item.deadlineRaw && (
-                          <span className="text-[10px] text-green-500 mt-0.5">
+                          <span className="text-[11px] text-green-600 font-medium">
                             ✅ Resolved from: "{item.deadlineRaw}"
                           </span>
                         )}
