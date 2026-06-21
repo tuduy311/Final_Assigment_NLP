@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { CheckCircle2, Calendar as CalendarIcon, User, PlusCircle, Loader2, AlignLeft, Clock } from 'lucide-react'
 import { createCalendarEvents } from '../services/api'
 
@@ -26,20 +26,26 @@ export const ActionItemTable = ({ items, onSeek }) => {
   const [syncResult, setSyncResult] = useState(null)
   const [editableItems, setEditableItems] = useState([])
 
+  const previousItemsRef = useRef(null)
+
   useEffect(() => {
     if (items) {
-      setEditableItems(items.map((item, idx) => ({
-        ...item,
-        id: idx,
-        selected: true,
-        title: item.title || item.task || '',
-        description: item.description || '',
-        note: item.note || '',
-        reference_segments: item.reference_segments || [],
-        assignee: item.assignees ? item.assignees.join(', ') : (item.assignee || item.owner || ''),
-        deadline: extractDeadline(item.deadline),
-        deadline_info: item.deadline_info || null
-      })))
+      const currentItemsStr = JSON.stringify(items)
+      if (previousItemsRef.current !== currentItemsStr) {
+        setEditableItems(items.map((item, idx) => ({
+          ...item,
+          id: idx,
+          selected: true,
+          title: item.title || item.task || '',
+          description: item.description || '',
+          note: item.note || '',
+          reference_segments: item.reference_segments || [],
+          assignee: item.assignees ? item.assignees.join(', ') : (item.assignee || item.owner || ''),
+          deadline: extractDeadline(item.deadline),
+          deadline_info: item.deadline_info || null
+        })))
+        previousItemsRef.current = currentItemsStr
+      }
     }
   }, [items])
 
@@ -147,21 +153,21 @@ export const ActionItemTable = ({ items, onSeek }) => {
                   />
                 </td>
                 <td className="px-4 py-4">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <input
                       type="text"
                       value={item.title || ''}
                       onChange={(e) => handleItemChange(item.id, 'title', e.target.value)}
-                      className={`w-full font-semibold bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-900 placeholder-gray-400`}
+                      className={`w-full font-semibold border rounded-md px-3 py-2 transition-colors ${item.selected ? 'bg-white border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-900' : 'bg-transparent border-transparent text-gray-500'}`}
                       placeholder="Task Title (Optional)"
                       disabled={!item.selected}
                     />
                     <div className="flex items-start gap-2">
-                      <AlignLeft className={`w-4 h-4 mt-1 flex-shrink-0 ${item.selected ? 'text-gray-400' : 'text-gray-300'}`} />
+                      <AlignLeft className={`w-4 h-4 mt-3 flex-shrink-0 ${item.selected ? 'text-gray-400' : 'text-gray-300'}`} />
                       <textarea
                         value={item.description || ''}
                         onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-600 placeholder-gray-400 resize-y min-h-[40px]`}
+                        className={`w-full border rounded-md px-3 py-2 transition-colors resize-y min-h-[60px] ${item.selected ? 'bg-white border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700' : 'bg-transparent border-transparent text-gray-500'}`}
                         placeholder="Task description"
                         disabled={!item.selected}
                         rows={2}
@@ -170,14 +176,14 @@ export const ActionItemTable = ({ items, onSeek }) => {
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  <div className="space-y-3">
+                  <div className="space-y-4 mt-1">
                     <div className={`flex items-center gap-2 ${!item.selected && 'opacity-50'}`}>
                       <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <input
                         type="text"
                         value={item.assignee || ''}
                         onChange={(e) => handleItemChange(item.id, 'assignee', e.target.value)}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-700 placeholder-gray-400`}
+                        className={`w-full border rounded-md px-3 py-1.5 transition-colors ${item.selected ? 'bg-white border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700' : 'bg-transparent border-transparent'}`}
                         placeholder="Unassigned"
                         disabled={!item.selected}
                       />
@@ -185,25 +191,24 @@ export const ActionItemTable = ({ items, onSeek }) => {
                     <div className={`flex items-center gap-2 ${!item.selected && 'opacity-50'}`}>
                       <CalendarIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <input
-                        type="text"
+                        type="date"
                         value={item.deadline || ''}
                         onChange={(e) => handleItemChange(item.id, 'deadline', e.target.value)}
                         title={item.deadline_info ? `Transcript: "${item.deadline_info.raw_phrase || 'N/A'}"${item.deadline_info.reasoning ? `\nReasoning: ${item.deadline_info.reasoning}` : ''}${item.deadline_info.confidence ? `\nConfidence: ${item.deadline_info.confidence}` : ''}` : ''}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-700 placeholder-gray-400`}
-                        placeholder="No deadline"
+                        className={`w-full border rounded-md px-3 py-1.5 transition-colors ${item.selected ? 'bg-white border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700' : 'bg-transparent border-transparent'}`}
                         disabled={!item.selected}
                       />
                     </div>
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  <div className="space-y-3">
+                  <div className="space-y-3 mt-1">
                     <div className="flex flex-col gap-1">
-                      <span className="text-xs font-semibold text-gray-500 uppercase">Note</span>
+                      <span className="text-xs font-semibold text-gray-500 uppercase ml-1">Note</span>
                       <textarea
                         value={item.note || ''}
                         onChange={(e) => handleItemChange(item.id, 'note', e.target.value)}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-600 placeholder-gray-400 resize-y min-h-[40px] text-xs`}
+                        className={`w-full border rounded-md px-3 py-2 transition-colors resize-y min-h-[60px] text-sm ${item.selected ? 'bg-white border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700' : 'bg-transparent border-transparent text-gray-500'}`}
                         placeholder="Add a note..."
                         disabled={!item.selected}
                         rows={2}

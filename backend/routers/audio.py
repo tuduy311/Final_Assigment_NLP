@@ -33,7 +33,7 @@ router = APIRouter(
 )
 
 MODEL_SERVICE_BASE_URL = os.getenv("MODEL_SERVICE_BASE_URL", "http://localhost:5000")
-WORKSPACE_BASE_DIR = "/tmp/audio-workspaces"
+WORKSPACE_BASE_DIR = os.getenv("WORKSPACE_BASE_DIR", "./audio-workspaces")
 
 # Đảm bảo thư mục workspace tồn tại
 os.makedirs(WORKSPACE_BASE_DIR, exist_ok=True)
