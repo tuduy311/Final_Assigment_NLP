@@ -17,3 +17,6 @@ env/
 # Metrics & logs (có thể chứa dữ liệu nhạy cảm)
 metrics/
 *.log
+
+# Audio Processing Workspace
+audio-workspaces/

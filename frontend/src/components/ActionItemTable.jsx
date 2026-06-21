@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, Calendar as CalendarIcon, User, PlusCircle, Loader2, AlignLeft, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCalendarSyncAgent, SYNC_STATES } from '../agents/calendarSyncAgent';
@@ -187,7 +187,7 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
                       type="text"
                       value={item.title || ''}
                       onChange={(e) => handleItemChange(item.id, 'title', e.target.value)}
-                      className={`w-full font-semibold bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-900 placeholder-gray-400`}
+                      className={`w-full font-semibold border rounded-md px-3 py-2 ${item.selected ? 'bg-white hover:border-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' : 'bg-transparent border-transparent'} transition-colors text-gray-900 placeholder-gray-400`}
                       placeholder="Task Title (Optional)"
                       disabled={!item.selected}
                     />
@@ -196,7 +196,7 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
                       <textarea
                         value={item.description || ''}
                         onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-600 placeholder-gray-400 resize-y min-h-[40px]`}
+                        className={`w-full border rounded-md px-3 py-2 ${item.selected ? 'bg-white hover:border-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' : 'bg-transparent border-transparent'} transition-colors text-gray-600 placeholder-gray-400 resize-y min-h-[40px]`}
                         placeholder="Task description"
                         disabled={!item.selected}
                         rows={2}
@@ -212,7 +212,7 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
                         type="text"
                         value={item.assignee || ''}
                         onChange={(e) => handleItemChange(item.id, 'assignee', e.target.value)}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-700 placeholder-gray-400`}
+                        className={`w-full border rounded-md px-3 py-2 ${item.selected ? 'bg-white hover:border-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' : 'bg-transparent border-transparent'} transition-colors text-gray-700 placeholder-gray-400`}
                         placeholder="Unassigned"
                         disabled={!item.selected}
                       />
@@ -254,7 +254,7 @@ export const ActionItemTable = ({ items, onSeek, userName }) => {
                       <textarea
                         value={item.note || ''}
                         onChange={(e) => handleItemChange(item.id, 'note', e.target.value)}
-                        className={`w-full bg-transparent border-0 border-b ${item.selected ? 'border-transparent hover:border-gray-300 focus:border-indigo-500' : 'border-transparent'} focus:ring-0 px-0 py-1 transition-colors text-gray-600 placeholder-gray-400 resize-y min-h-[40px] text-xs`}
+                        className={`w-full border rounded-md px-3 py-2 ${item.selected ? 'bg-white hover:border-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' : 'bg-transparent border-transparent'} transition-colors text-gray-600 placeholder-gray-400 resize-y min-h-[40px] text-xs`}
                         placeholder="Add a note..."
                         disabled={!item.selected}
                         rows={2}
