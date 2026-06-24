@@ -10,3 +10,5 @@ dist/
 *.swp
 *.swo
 *.mp3
+ __pycache__/
+*.pyc

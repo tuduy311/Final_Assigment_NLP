@@ -1,0 +1,8 @@
+{
+  "upload": {
+    "allowed_extensions": [
+      ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".aac"
+    ],
+    "max_file_size_mb": 500
+  }
+}

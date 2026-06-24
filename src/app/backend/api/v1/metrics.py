@@ -1,0 +1,83 @@
+"""
+api/v1/metrics.py — MLOps monitoring endpoints.
+"""
+import json
+import os
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from core.dependencies import get_metrics_service, MetricsService
+
+router = APIRouter(prefix="/metrics", tags=["Metrics & Monitoring"])
+
+
+@router.get("/summary")
+async def get_metrics_summary(metrics_service: MetricsService = Depends(get_metrics_service)):
+    """Read metrics.jsonl and return aggregated data for the Dashboard charts."""
+    if not hasattr(metrics_service.storage, "log_file"):
+        raise HTTPException(status_code=500, detail="Storage mechanism not supported for direct file read")
+
+    log_file = metrics_service.storage.log_file
+    if not os.path.exists(log_file):
+        return {"total_requests": 0, "recent_history": []}
+
+    history, total_requests, total_latency = [], 0, 0
+    total_rtf, rtf_count = 0, 0
+    avg_confidence, confidence_count = 0, 0
+    total_wer, wer_count = 0, 0
+
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                data = json.loads(line)
+                history.append(data)
+                total_requests += 1
+                total_latency += data.get("latency_ms", 0)
+                if data.get("rtf") is not None:
+                    total_rtf += data["rtf"]
+                    rtf_count += 1
+                extra = data.get("extra", {})
+                if "word_error_rate" in extra:
+                    total_wer += extra["word_error_rate"]
+                    wer_count += 1
+                asr = data.get("asr")
+                if asr and asr.get("confidence") is not None:
+                    avg_confidence += asr.get("confidence")
+                    confidence_count += 1
+
+        history.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        return {
+            "total_requests": total_requests,
+            "avg_latency_ms": round(total_latency / total_requests, 2) if total_requests > 0 else 0,
+            "avg_rtf": round(total_rtf / rtf_count, 3) if rtf_count > 0 else 0,
+            "avg_wer": round(total_wer / wer_count, 3) if wer_count > 0 else 0,
+            "avg_confidence": round(avg_confidence / confidence_count, 2) if confidence_count > 0 else 0,
+            "recent_history": history[:100],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/drift-alerts")
+async def get_drift_alerts(metrics_service: MetricsService = Depends(get_metrics_service)):
+    """Read flagged.jsonl and return drift alert records."""
+    if not hasattr(metrics_service.storage, "flag_file"):
+        raise HTTPException(status_code=500, detail="Storage mechanism not supported for direct file read")
+
+    flag_file = metrics_service.storage.flag_file
+    if not os.path.exists(flag_file):
+        return {"alerts": []}
+
+    alerts = []
+    try:
+        with open(flag_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                alerts.append(json.loads(line))
+        alerts.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        return {"alerts": alerts[:50]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

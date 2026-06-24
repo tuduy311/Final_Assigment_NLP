@@ -1,0 +1,6 @@
+{
+  "confidence_threshold": -0.7,
+  "no_speech_prob_threshold": 0.6,
+  "short_segment_rate_threshold": 0.5,
+  "correction_rate_threshold": 0.2
+}

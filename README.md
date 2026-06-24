@@ -1,84 +1,80 @@
-# Meeting Minutes & Action Item Extraction System
+# Smart Meeting Assistant
 
 ## Project Overview
-This is a full-stack application for automatic meeting transcription, diarization (speaker detection), and analysis. It allows users to upload meeting audio recordings and automatically extracts the full transcript, generates a concise summary, and extracts actionable items (tasks) with assignees and deadlines. It also features an AI Agent Chatbot that can answer questions about the meeting and help users schedule tasks on Google Calendar.
-
-## Project Structure
-```
-.
-├── frontend/                  # React frontend application
-│   ├── src/                   # React source code (components, API)
-│   ├── Dockerfile             # Docker instructions for frontend
-│   └── package.json           # Node.js dependencies
-│
-├── backend/                   # FastAPI backend server
-│   ├── routers/               # API endpoint handlers (audio, agent, calendar, metrics)
-│   ├── Dockerfile             # Docker instructions for backend
-│   └── requirements.txt       # Python dependencies
-│
-├── docker-compose.yml         # Docker compose configuration
-└── README.md                  # This documentation file
-```
+This is a full-stack application for automatic meeting transcription, diarization (speaker detection), and analysis. It allows users to upload meeting audio recordings and automatically extracts the full transcript, generates a concise summary, and extracts actionable items (tasks) with assignees and deadlines. It also features an **Agentic Component for Autonomous Google Calendar Synchronization**, which intelligently resolves relative deadlines (e.g., "next Friday") and automatically schedules tasks to the user's calendar while avoiding duplicates.
 
 ## Environment Setup Instructions
 You need to set up environment variables for both the frontend and backend.
 
-1. **Frontend:**
-   Copy `frontend/.env.example` to `frontend/.env` (if applicable) or configure Google OAuth credentials in your frontend code as instructed in `frontend/README.md`.
+1. **Frontend (Google Calendar Integration):**
+   Copy `src/app/frontend/.env.example` to `src/app/frontend/.env`. You must provide a valid `VITE_GOOGLE_CLIENT_ID`.
+   *How to get a Google Client ID:*
+   - Go to the [Google Cloud Console](https://console.cloud.google.com/).
+   - Create a new project, go to **APIs & Services > Credentials**.
+   - Create an **OAuth client ID** (Web application), add `http://localhost:5173` to the Authorized JavaScript origins.
+   - Copy the generated Client ID and paste it into `VITE_GOOGLE_CLIENT_ID`.
+   *(Note: For convenience during evaluation, you can use `1070673665720-a4a6qeq55nkm5grt0m65k4n0f23mcnv3.apps.googleusercontent.com`)*
+
+
 2. **Backend:**
-   Copy `backend/.env.example` to `backend/.env` and fill in the required values:
+   Copy `src/app/backend/.env.example` to `src/app/backend/.env` and fill in the required values:
    - `MODEL_SERVICE_BASE_URL`: The URL of the external AI model service.
-   - `GEMINI_API_KEY`: Your Google Gemini API Key (get it from Google AI Studio) for the Agentic AI chatbot feature.
+   - `DEFAULT_TIMEZONE` & `DEFAULT_TZ_OFFSET`: System timezone settings.
 
 ## Dependency Installation Steps
-If you run without Docker, you must install dependencies manually:
+If you run the system locally without Docker, you must install dependencies manually.
 
-**Frontend:**
+**Frontend Dependencies:**
 ```bash
-cd frontend
+cd src/app/frontend
 npm install
 ```
 
-**Backend:**
+**Backend Dependencies:**
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate
+cd src/app/backend
 pip install -r requirements.txt
 ```
 
-*(Note: We highly recommend using Docker to automatically handle dependencies as shown below).*
+**Testing Dependencies:**
+If you wish to run the unit tests or E2E pipeline scripts in the `test/` folder, install the Python test packages from the project root:
+```bash
+pip install pytest requests
 
+```
+To run the tests:
+```bash
+python -m pytest
+```
 ## How to Train the Model
-**No training is required in this repository.** 
-This project focuses on the application layer (System Integration, Agentic AI, UI/UX, and Pipeline). The heavy ML components (Speech-to-Text via Whisper, Diarization, and LLM text generation via Qwen) are decoupled and hosted externally on a separate Model Service API (configured via `MODEL_SERVICE_BASE_URL`). The Agentic AI relies on the Google Gemini API, which is a pre-trained foundation model.
+
 
 ## How to Run Inference or the Deployed System
+
+### Running the Inference Notebooks
+The inference notebooks contain heavy ML components that require significant GPU resources. **The inference notebook must be run on Kaggle** (or a machine with equivalent VRAM) to function properly without Out-Of-Memory errors.
+
+### Running the Deployed System (Web App)
 The recommended way to run the entire system reproducibly is via Docker Compose.
 
-1. Make sure Docker and Docker Compose are installed on your machine.
+1. Ensure Docker and Docker Compose are installed on your machine.
 2. Ensure you have configured the `.env` files.
 3. Run the following command from the root of the project:
    ```bash
-   docker compose up --build
+   cd src/app
+   docker compose up --build -d
    ```
-4. Access the frontend application at `http://localhost:3000`.
+4. Access the frontend application at `http://localhost:5173`.
 5. Access the backend API documentation (Swagger UI) at `http://localhost:8000/docs`.
 
-To run inference:
-1. Open the UI at `http://localhost:3000`.
-2. Upload an audio file.
-3. Click "Generate Transcript" and "Detect Speakers" to trigger the backend inference pipeline.
-4. Chat with the AI Agent at the bottom of the workspace to interact with the extracted data.
+### Running Tests
+To run the automated tests locally:
+- **Unit Tests:** Run `pytest` from the root directory to test the Date Resolver Agent and ML Drift Monitor logic.
+- **E2E Integration Test:** Run `python test/test_e2e_pipeline.py` to simulate the full transcription pipeline.
 
 ## Description of Deployment Method
-The deployment uses **Docker containerization**. 
-- The **Backend** is packaged in a Python 3.10 slim container running `uvicorn` (FastAPI).
-- The **Frontend** is packaged in a Node 18 Alpine container running Vite.
-- **Docker Compose** is used to orchestrate both services, exposing port `3000` for the UI and `8000` for the API. It mounts volumes for hot-reloading code during development and persists the `workspace_data` volume so audio files and JSON results are kept across container restarts.
+The deployment uses **Docker containerization** for robust reproducibility and isolation.
 
-## Code Quality Highlights
-- **Well-organized and modular:** The frontend is strictly component-based. The backend uses FastAPI routers to split logic (`audio`, `metrics`, `agent`, `calendar`).
-- **Reproducible:** Docker and `docker-compose.yml` are provided.
-- **No Hard-coded Secrets:** All credentials, API keys, and model URLs are managed via `.env` files.
-- **Large datasets:** Audio files are stored in the local `workspace_data` volume which is added to `.gitignore`. No large datasets or model weights are committed to the repository.
+- **Backend Container:** Packaged in a Python 3.10 slim container running `uvicorn` (FastAPI). It handles API routing, NLP rules processing, and MLOps metrics.
+- **Frontend Container:** Packaged in a Node 18 Alpine container running Vite.
+- **Docker Compose:** Orchestrates both microservices, exposing port `5173` for the UI and `8000` for the API. It mounts a persistent volume for `workspace_data` so audio files and JSON results are kept safe across container restarts. Configuration parameters are injected dynamically via environment variables.
