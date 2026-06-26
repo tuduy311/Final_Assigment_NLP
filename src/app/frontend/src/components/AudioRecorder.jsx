@@ -16,6 +16,7 @@ const AudioRecorder = ({ onRecordingComplete, isUploading }) => {
   const canvasRef = useRef(null)
   const audioContextRef = useRef(null)
   const analyserRef = useRef(null)
+  const sourceRef = useRef(null)
   const animationFrameRef = useRef(null)
 
   useEffect(() => {
@@ -31,20 +32,26 @@ const AudioRecorder = ({ onRecordingComplete, isUploading }) => {
         animationFrameRef.current = requestAnimationFrame(draw)
         
         analyser.getByteFrequencyData(dataArray)
-        
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height)
         
-        const barWidth = (canvas.width / bufferLength) * 2.5
-        let barHeight
-        let x = 0
+        // Use a subset of frequencies focusing on human voice
+        const activeBins = Math.min(50, bufferLength) 
+        const barWidth = canvas.width / activeBins
         
-        for (let i = 0; i < bufferLength; i++) {
-          barHeight = dataArray[i] / 2
+        let x = 0
+        for (let i = 0; i < activeBins; i++) {
+          // Normalize height and add a minimum height of 4px
+          const normalized = dataArray[i] / 255
+          const barHeight = Math.max(4, normalized * canvas.height * 0.8)
           
-          canvasCtx.fillStyle = `rgb(239, 68, 68)` // Tailwind red-500
-          canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
+          // Center the bars vertically
+          const y = (canvas.height - barHeight) / 2
           
-          x += barWidth + 1
+          // Draw with safe fillRect (roundRect can crash on older Mac browsers)
+          canvasCtx.fillStyle = 'rgb(239, 68, 68)' // Tailwind red-500
+          canvasCtx.fillRect(x + 1, y, barWidth - 2, barHeight)
+          
+          x += barWidth
         }
       }
       
@@ -81,14 +88,28 @@ const AudioRecorder = ({ onRecordingComplete, isUploading }) => {
       setRecordingType(type)
       chunksRef.current = []
 
-      // Setup Web Audio API for visualization
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume()
+      }
       const analyser = audioCtx.createAnalyser()
       analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.7
+      
       const source = audioCtx.createMediaStreamSource(stream)
+      
+      // Workaround for browser bug: connect to a muted gain node, then to destination 
+      // to force the audio graph to process the stream without silencing the MediaRecorder
+      const gainNode = audioCtx.createGain()
+      gainNode.gain.value = 0
+      
       source.connect(analyser)
+      analyser.connect(gainNode)
+      gainNode.connect(audioCtx.destination)
+      
       audioContextRef.current = audioCtx
       analyserRef.current = analyser
+      sourceRef.current = source
 
       // Try to use webm if supported, otherwise let the browser decide
       const options = MediaRecorder.isTypeSupported('audio/webm') 
@@ -105,7 +126,9 @@ const AudioRecorder = ({ onRecordingComplete, isUploading }) => {
       }
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        // Safari records in mp4, Chrome in webm. We must use the actual mime type
+        const actualMimeType = mediaRecorder.mimeType || (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4')
+        const blob = new Blob(chunksRef.current, { type: actualMimeType })
         setRecordedBlob(blob)
         setAudioUrl(URL.createObjectURL(blob))
         
@@ -143,14 +166,23 @@ const AudioRecorder = ({ onRecordingComplete, isUploading }) => {
         audioContextRef.current = null
       }
       analyserRef.current = null
+      
+      if (sourceRef.current) {
+        sourceRef.current.disconnect()
+        sourceRef.current = null
+      }
     }
   }
 
   const handleUpload = () => {
     if (recordedBlob) {
-      // Create a File object from the blob
-      const file = new File([recordedBlob], `recording-${Date.now()}.webm`, {
-        type: 'audio/webm'
+      // Determine correct extension based on actual blob type
+      const isMp4 = recordedBlob.type.includes('mp4') || recordedBlob.type.includes('m4a')
+      const ext = isMp4 ? 'mp4' : 'webm'
+      
+      // Create a File object from the blob with the exact correct mime type
+      const file = new File([recordedBlob], `recording-${Date.now()}.${ext}`, {
+        type: recordedBlob.type
       })
       onRecordingComplete(file)
     }

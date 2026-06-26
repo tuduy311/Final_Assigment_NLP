@@ -64,7 +64,7 @@ The recommended way to run the entire system reproducibly is via Docker Compose.
    cd src/app
    docker compose up --build -d
    ```
-4. Access the frontend application at `http://localhost:5173`.
+4. Access the frontend application at `http://localhost:3000`.
 5. Access the backend API documentation (Swagger UI) at `http://localhost:8000/docs`.
 
 ### Running Tests

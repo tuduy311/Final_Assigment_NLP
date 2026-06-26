@@ -3,8 +3,11 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # System deps: libmagic1 for python-magic (MIME type validation)
+# build-essential and python3-dev are needed to compile native extensions (like blis for spacy) on ARM64
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
+    build-essential \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirement list and install dependencies

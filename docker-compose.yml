@@ -1,17 +1,15 @@
-version: '3.8'
-
 services:
   backend:
     build:
-      context: ./backend
+      context: ./src/app/backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
       - workspace_data:/app/audio-workspaces
-      - ../../configs:/configs:ro
+      - ./configs:/configs:ro
     env_file:
-      - ./backend/.env
+      - ./src/app/backend/.env
     environment:
       # These override .env values when running in Docker
       - WORKSPACE_BASE_DIR=/app/audio-workspaces
@@ -21,7 +19,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./src/app/frontend
       dockerfile: Dockerfile
     ports:
       - "3000:3000"

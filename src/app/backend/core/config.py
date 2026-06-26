@@ -6,9 +6,11 @@ No other module should call os.getenv() directly for these values.
 import os
 from pathlib import Path
 
-# Repo root is 4 levels up from this file:
-# backend/core/config.py -> backend -> app -> src -> Final_Assigment_NLP
-_REPO_ROOT = Path(__file__).resolve().parents[4]
+# Repo root is 4 levels up locally, but inside Docker it is shallower.
+try:
+    _REPO_ROOT = Path(__file__).resolve().parents[4]
+except IndexError:
+    _REPO_ROOT = Path("/")
 _LOCAL_CONFIGS = _REPO_ROOT / "configs"
 
 
