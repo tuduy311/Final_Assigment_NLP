@@ -2,7 +2,6 @@
 
 This directory contains the Jupyter Notebooks used for training and evaluating our Speech-to-Text (ASR) and Speaker Diarization models.
 
-> [!IMPORTANT]
 > **Execution Environment:** All notebook files (`.ipynb` files inside `models/notebooks/`) are designed and optimized to run on **Google Colab** with a **T4 GPU** (or better) runtime.
 
 ## Checkpoint Links
@@ -13,6 +12,20 @@ Because model weight files are too large to be committed to Git, all trained che
   * Expected Google Drive Path: `/content/drive/MyDrive/Speech_to_Text_CL`
 * **Speaker Diarization Checkpoints:** [Google Drive Folder](https://drive.google.com/drive/folders/1VwMIc2G1iHR7Z_LOf5nhyjEcpyh9k3Ex?usp=sharing)
   * Expected Google Drive Path: `/content/drive/MyDrive/VoxConverse_Continual_Learning`
+
+### How to Download Locally using Script
+
+You can download all model checkpoint folders automatically to the local workspace using the provided Python script:
+
+1. **Install dependencies**:
+   ```bash
+   pip install -r models/requirements.txt
+   ```
+
+2. **Run the download script**:
+   ```bash
+   python models/download_checkpoints.py
+   ```
 
 ---
 

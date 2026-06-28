@@ -1,0 +1,11 @@
+# Ignore downloaded Google Drive checkpoint folders
+Speech_to_Text_CL/
+VoxConverse_Continual_Learning/
+
+# Ignore common large binary weights just in case
+*.ckpt
+*.pt
+*.bin
+*.h5
+*.safetensors
+*.onnx
