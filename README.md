@@ -1,80 +1,219 @@
 # Smart Meeting Assistant
 
 ## Project Overview
-This is a full-stack application for automatic meeting transcription, diarization (speaker detection), and analysis. It allows users to upload meeting audio recordings and automatically extracts the full transcript, generates a concise summary, and extracts actionable items (tasks) with assignees and deadlines. It also features an **Agentic Component for Autonomous Google Calendar Synchronization**, which intelligently resolves relative deadlines (e.g., "next Friday") and automatically schedules tasks to the user's calendar while avoiding duplicates.
 
-## Environment Setup Instructions
-You need to set up environment variables for both the frontend and backend.
+A full-stack NLP application that transforms raw meeting audio into structured, actionable intelligence. Users upload meeting recordings and the system automatically:
 
-1. **Frontend (Google Calendar Integration):**
-   Copy `src/app/frontend/.env.example` to `src/app/frontend/.env`. You must provide a valid `VITE_GOOGLE_CLIENT_ID`.
-   *How to get a Google Client ID:*
-   - Go to the [Google Cloud Console](https://console.cloud.google.com/).
-   - Create a new project, go to **APIs & Services > Credentials**.
-   - Create an **OAuth client ID** (Web application), add `http://localhost:5173` to the Authorized JavaScript origins.
-   - Copy the generated Client ID and paste it into `VITE_GOOGLE_CLIENT_ID`.
-   *(Note: For convenience during evaluation, you can use `1070673665720-a4a6qeq55nkm5grt0m65k4n0f23mcnv3.apps.googleusercontent.com`)*
+- **Transcribes** speech to text using `faster-whisper` (Whisper large-v3)
+- **Diarizes** audio to identify and separate individual speakers using `pyannote.audio`
+- **Summarizes** the meeting content via a locally-hosted Qwen 2.5 14B LLM
+- **Extracts action items** (tasks, assignees, deadlines) in structured JSON form
+- **Synchronizes tasks** to Google Calendar via an autonomous AI Agent that resolves relative deadlines (e.g., "next Friday") and deduplicates existing events
 
+The heavy inference pipeline (ASR + Diarization + LLM) runs on a remote GPU service (Kaggle T4), while the lightweight web application (API + UI) runs locally or in Docker.
 
-2. **Backend:**
-   Copy `src/app/backend/.env.example` to `src/app/backend/.env` and fill in the required values:
-   - `MODEL_SERVICE_BASE_URL`: The URL of the external AI model service.
-   - `DEFAULT_TIMEZONE` & `DEFAULT_TZ_OFFSET`: System timezone settings.
+---
 
-## Dependency Installation Steps
-If you run the system locally without Docker, you must install dependencies manually.
+## Repository Structure
 
-**Frontend Dependencies:**
-```bash
-cd src/app/frontend
-npm install
+```
+project-root/
+├── src/
+│   ├── app/
+│   │   ├── backend/        # FastAPI REST API (core source code)
+│   │   └── frontend/       # React/Vite web application
+│   └── notebooks/          # Inference notebook (Kaggle runtime)
+├── data/                   # Data download scripts & README
+├── models/
+│   └── notebooks/          # Training & evaluation Jupyter notebooks
+├── configs/                # NLP rules, thresholds (nlp_rules.json)
+├── tests/                  # Unit tests & E2E pipeline test
+├── docker-compose.yml      # Orchestrates backend + frontend containers
+├── pyproject.toml          # Build system & pytest config
+└── README.md
 ```
 
-**Backend Dependencies:**
+---
+
+## Environment Setup Instructions
+
+You need to configure environment variables for both the frontend and backend before running.
+
+### 1. Frontend (Google OAuth & Calendar Integration)
+
+Copy the example file and fill in your credentials:
+```bash
+cp src/app/frontend/.env.example src/app/frontend/.env
+```
+
+Required variable:
+- `VITE_GOOGLE_CLIENT_ID`: Your Google OAuth 2.0 Client ID.
+
+*How to get a Client ID:*
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Credentials**.
+2. Create an **OAuth 2.0 Client ID** (Web application type).
+3. Add `http://localhost:3000` and `http://localhost:5173` to **Authorized JavaScript origins**.
+4. Copy the Client ID into the `.env` file.
+
+> **For convenience**, you may use the pre-configured Client ID:
+> `1070673665720-a4a6qeq55nkm5grt0m65k4n0f23mcnv3.apps.googleusercontent.com`
+
+### 2. Backend (API & Model Service)
+
+Copy the example file and fill in the required values:
+```bash
+cp src/app/backend/.env.example src/app/backend/.env
+```
+
+Required variables:
+- `MODEL_SERVICE_BASE_URL`: The public URL of the external GPU inference service (e.g., your Kaggle tunnel URL).
+- `DEFAULT_TIMEZONE` & `DEFAULT_TZ_OFFSET`: System timezone (e.g., `Asia/Ho_Chi_Minh` / `7`).
+
+---
+
+## Dependency Installation Steps
+
+### Option A: Docker
+No manual installation required. Docker handles all dependencies. See [Running the Deployed System](#running-the-deployed-system-web-app) below.
+
+### Option B: Local (Manual)
+
+**Backend:**
 ```bash
 cd src/app/backend
 pip install -r requirements.txt
 ```
 
-**Testing Dependencies:**
-If you wish to run the unit tests or E2E pipeline scripts in the `test/` folder, install the Python test packages from the project root:
+**Frontend:**
 ```bash
-pip install pytest requests
+cd src/app/frontend
+npm install
+```
 
-```
-To run the tests:
+**Data scripts** (only if you need to download training datasets):
 ```bash
-python -m pytest
+pip install -r data/requirements.txt
 ```
+
+**Testing tools:**
+```bash
+# From project root
+pip install pytest requests
+```
+
+---
+
 ## How to Train the Model
 
+The models are trained using Jupyter notebooks on a GPU-enabled environment
+### Step 1: Prepare the Data
+
+Download and preprocess the datasets using the scripts in the `data/` directory:
+```bash
+# Download & format LibriSpeech (for ASR training/evaluation)
+python data/prepare_librispeech.py
+
+# Download & format VoxConverse (for Diarization training/evaluation)
+python data/prepare_voxconverse.py
+```
+See `data/README.md` for detailed instructions on each dataset.
+
+### Step 2: Run Training Notebooks
+
+Upload the processed datasets and the following notebooks to your Kaggle session:
+
+| Notebook | Task | Location |
+|---|---|---|
+| `Train_ASR.ipynb` | Fine-tune Whisper on meeting audio | `models/notebooks/` |
+| `Train_Diarizaion.ipynb` | Fine-tune Pyannote Diarization | `models/notebooks/` |
+
+### Step 3: Evaluate
+
+| Notebook | Metric | Location |
+|---|---|---|
+| `Evaluate_ASR.ipynb` | WER on LibriSpeech test-clean / test-other | `models/notebooks/` |
+| `Evaluate_Diarizaion.ipynb` | DER on VoxConverse | `models/notebooks/` |
+
+See `models/README.md` for expected benchmark results and checkpoint download instructions.
+
+---
 
 ## How to Run Inference or the Deployed System
 
-### Running the Inference Notebooks
-The inference notebooks contain heavy ML components that require significant GPU resources. **The inference notebook must be run on Kaggle** (or a machine with equivalent VRAM) to function properly without Out-Of-Memory errors.
+### Running the Inference Service (GPU — Kaggle)
+
+The ASR, Diarization, and LLM inference runs on a separate GPU service because it requires ~14 GB VRAM. The full inference notebook is located at:
+
+```
+src/notebooks/nlp-app.ipynb
+```
+
+1. Upload this notebook to a Kaggle session with **GPU T4 x2** and **Internet** enabled.
+2. Run all cells. The notebook will start a FastAPI server and expose a public URL via Cloudflare Tunnel.
+3. Copy the tunnel URL and set it as `MODEL_SERVICE_BASE_URL` in `src/app/backend/.env`.
 
 ### Running the Deployed System (Web App)
-The recommended way to run the entire system reproducibly is via Docker Compose.
 
-1. Ensure Docker and Docker Compose are installed on your machine.
-2. Ensure you have configured the `.env` files.
-3. Run the following command from the root of the project:
-   ```bash
-   cd src/app
-   docker compose up --build -d
-   ```
-4. Access the frontend application at `http://localhost:3000`.
-5. Access the backend API documentation (Swagger UI) at `http://localhost:8000/docs`.
+The web application (Frontend + Backend API) runs via Docker Compose from the project root.
+
+**Prerequisites:** Docker and Docker Compose installed, `.env` files configured.
+
+```bash
+# From the project root directory
+docker compose up --build -d
+```
+
+| Service | URL |
+|---|---|
+| Frontend (Web UI) | http://localhost:3000 |
+| Backend API (Swagger UI) | http://localhost:8000/docs |
+
+
+
+### Running Locally (without Docker)
+
+```bash
+# Terminal 1 — Backend
+cd src/app/backend
+python main.py
+
+# Terminal 2 — Frontend
+cd src/app/frontend
+npm run dev
+```
 
 ### Running Tests
-To run the automated tests locally:
-- **Unit Tests:** Run `pytest` from the root directory to test the Date Resolver Agent and ML Drift Monitor logic.
-- **E2E Integration Test:** Run `python test/test_e2e_pipeline.py` to simulate the full transcription pipeline.
+
+```bash
+# From the project root
+
+# Unit tests (Date Resolver, Metrics Monitor)
+python -m pytest
+
+# E2E pipeline test (requires backend running at localhost:8000)
+python tests/test_e2e_pipeline.py
+```
+
+---
 
 ## Description of Deployment Method
-The deployment uses **Docker containerization** for robust reproducibility and isolation.
 
-- **Backend Container:** Packaged in a Python 3.10 slim container running `uvicorn` (FastAPI). It handles API routing, NLP rules processing, and MLOps metrics.
-- **Frontend Container:** Packaged in a Node 18 Alpine container running Vite.
-- **Docker Compose:** Orchestrates both microservices, exposing port `5173` for the UI and `8000` for the API. It mounts a persistent volume for `workspace_data` so audio files and JSON results are kept safe across container restarts. Configuration parameters are injected dynamically via environment variables.
+The system uses a **two-tier deployment architecture**:
+
+### Tier 1 — Web Application (Docker)
+
+Both the API and UI are containerized and orchestrated via `docker-compose.yml` at the project root:
+
+- **Backend container:** Python 3.10 slim image, runs `uvicorn` (FastAPI). Handles authentication (Google OAuth), per-user file workspace management, NLP rule processing, and MLOps metrics logging to `metrics.jsonl`.
+- **Frontend container:** Node 18 Alpine image, serves the compiled Vite/React application.
+- **Persistent volume:** `workspace_data` is mounted so uploaded audio files, transcripts, and JSON results survive container restarts.
+- **Security:** No secrets are hard-coded. All credentials are injected at runtime via `.env` files and Docker environment variables.
+
+### Tier 2 — GPU Inference Service (Kaggle)
+
+Due to the memory requirements of Whisper large-v3 and Qwen 2.5 14B, the ML inference pipeline runs on a separate GPU machine:
+
+- Hosted on Kaggle (T4 GPU, 16 GB VRAM).
+- Exposed publicly via Cloudflare Tunnel.
+- The web backend communicates with this service over HTTPS.
+- **Timeout handling:** All inference endpoints use `StreamingResponse` with periodic heartbeat bytes to prevent Cloudflare's 100-second timeout from killing long-running inference jobs.

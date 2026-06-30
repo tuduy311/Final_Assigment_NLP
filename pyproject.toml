@@ -22,7 +22,7 @@ dependencies = [
 minversion = "7.0"
 addopts = "-ra -q"
 testpaths = [
-    "test",
+    "tests",
 ]
 
 [tool.black]
