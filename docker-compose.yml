@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: ./src/app/backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - workspace_data:/app/audio-workspaces
+      - ./configs:/configs:ro
+    env_file:
+      - ./src/app/backend/.env
+    environment:
+      # These override .env values when running in Docker
+      - WORKSPACE_BASE_DIR=/app/audio-workspaces
+      - CONFIGS_DIR=/configs
+      # Set this to your actual model service URL in production
+      # - MODEL_SERVICE_BASE_URL=https://your-model-service.example.com
+
+  frontend:
+    build:
+      context: ./src/app/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+
+volumes:
+  workspace_data:

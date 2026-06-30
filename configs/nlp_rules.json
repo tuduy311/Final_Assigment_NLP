@@ -1,0 +1,14 @@
+{
+  "speaker_extraction": {
+    "stop_names": [
+      "i", "me", "my", "mine",
+      "you", "your", "yours",
+      "he", "him", "his",
+      "she", "her", "hers",
+      "it", "its",
+      "we", "us", "our", "ours",
+      "they", "them", "their", "theirs",
+      "everyone", "anyone", "someone", "nobody"
+    ]
+  }
+}

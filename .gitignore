@@ -9,3 +9,8 @@ dist/
 .idea/
 *.swp
 *.swo
+*.mp3
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/

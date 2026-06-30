@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smart-meeting-assistant"
+version = "1.0.0"
+description = "Agentic NLP System for Meeting Transcription and Action Item Extraction"
+authors = [
+    {name = "NLP Final Assignment"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+# This project uses Docker for dependency management.
+# Dependencies below are listed for local tooling and testing.
+dependencies = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = [
+    "test",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
