@@ -1,14 +1,30 @@
 import React, { useState } from 'react'
-import { Search, Home, Info, Mic, Settings, LogOut, Trash2, Activity } from 'lucide-react'
+import { Search, Home, Info, Mic, Settings, LogOut, Trash2, Activity, Pencil } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
-const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, onDeleteWorkspace, currentWorkspaceId, isLoadingHistory, isDashboardView }) => {
+const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, onDeleteWorkspace, onRenameWorkspace, currentWorkspaceId, isLoadingHistory, isDashboardView }) => {
   const { user, logout } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
+  const [renameItem, setRenameItem] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  const handleSaveRename = () => {
+    const trimmed = renameValue.trim()
+    if (!trimmed) {
+      alert("Name cannot be empty")
+      return
+    }
+    onRenameWorkspace(renameItem.audio_id, trimmed)
+    setRenameItem(null)
+  }
 
   const formatDuration = (seconds) => {
     if (!seconds) return '0 mins'
-    const m = Math.round(seconds / 60)
+    const h = Math.floor(seconds / 3600)
+    const m = Math.round((seconds % 3600) / 60)
+    if (h > 0) {
+      return `${h}h ${m}m`
+    }
     return `${m} mins`
   }
 
@@ -21,7 +37,7 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
   }
 
   const filteredHistory = history.filter(item =>
-    (item.filename || 'Unknown Audio').toLowerCase().includes(searchQuery.toLowerCase())
+    (item.name || item.filename || 'Unknown Audio').toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   return (
@@ -95,8 +111,8 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
                     className={`w-full text-left px-3 py-3 rounded-lg transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
                       }`}
                   >
-                    <div className={`text-sm font-semibold truncate mb-1 pr-6 ${isSelected ? 'text-blue-800' : 'text-gray-800'}`}>
-                      {item.filename || 'Unknown Audio'}
+                    <div className={`text-sm font-semibold truncate mb-1 pr-14 ${isSelected ? 'text-blue-800' : 'text-gray-800'}`}>
+                      {item.name || item.filename || 'Unknown Audio'}
                     </div>
                     <div className="text-xs text-gray-500 flex items-center gap-2">
                       <span>{dateStr}</span>
@@ -104,6 +120,17 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
                       <span>{timeStr}</span>
                       <span className="text-gray-400 ml-auto">{formatDuration(item.duration)}</span>
                     </div>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setRenameItem(item)
+                      setRenameValue(item.name || item.filename || '')
+                    }}
+                    className="absolute top-2 right-8 p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Rename meeting"
+                  >
+                    <Pencil className="w-4 h-4" />
                   </button>
                   <button
                     onClick={(e) => {
@@ -148,6 +175,44 @@ const Sidebar = ({ history, onSelectWorkspace, onHomeClick, onDashboardClick, on
           </div>
         )}
       </div>
+
+      {/* Rename Modal */}
+      {renameItem && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 max-w-sm w-full mx-4 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900">Rename Meeting</h3>
+            <p className="text-xs text-gray-500">
+              Enter a new display name for this meeting note. The original audio file will not be modified.
+            </p>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 font-medium text-gray-800"
+              placeholder="Enter name..."
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveRename()
+                if (e.key === 'Escape') setRenameItem(null)
+              }}
+            />
+            <div className="flex justify-end gap-2 text-sm pt-2">
+              <button
+                onClick={() => setRenameItem(null)}
+                className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveRename}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -8,6 +8,7 @@ import json
 import os
 
 from fastapi import HTTPException
+from utils.audio_utils import get_audio_duration
 
 
 def _workspace_path(workspace_base: str, user_id: str, audio_id: str) -> str:
@@ -30,13 +31,59 @@ def create_workspace(audio_id: str, workspace_base: str, user_id: str) -> str:
     return path
 
 
+AUDIO_EXTENSIONS = {".wav", ".mp3", ".webm", ".ogg", ".m4a", ".mp4", ".flac", ".aac"}
+
+
+def _find_actual_audio_file(workspace_dir: str) -> str | None:
+    """Scan the workspace directory for the actual audio file."""
+    if not os.path.exists(workspace_dir):
+        return None
+    for f in os.listdir(workspace_dir):
+        ext = os.path.splitext(f)[1].lower()
+        if ext in AUDIO_EXTENSIONS:
+            return f
+    return None
+
+
 def load_metadata(workspace_dir: str) -> dict:
     """Load metadata.json for a workspace. Raises HTTP 404 if missing."""
     meta_path = os.path.join(workspace_dir, "metadata.json")
     if not os.path.exists(meta_path):
         raise HTTPException(status_code=404, detail="Metadata not found")
     with open(meta_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        meta = json.load(f)
+    
+    filename = meta.get("filename")
+    meta_updated = False
+
+    # Self-healing for desynced filename (file on disk has a different name)
+    if not filename or not os.path.exists(os.path.join(workspace_dir, filename)):
+        actual_file = _find_actual_audio_file(workspace_dir)
+        if actual_file:
+            if filename and not meta.get("name"):
+                meta["name"] = filename
+            meta["filename"] = actual_file
+            filename = actual_file
+            meta_updated = True
+
+    # Self-healing for 0 duration
+    if meta.get("duration", 0) <= 0:
+        if filename:
+            file_path = os.path.join(workspace_dir, filename)
+            if os.path.exists(file_path):
+                dur = int(get_audio_duration(file_path))
+                if dur > 0:
+                    meta["duration"] = dur
+                    meta_updated = True
+
+    if meta_updated:
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+    return meta
 
 
 def merge_cache(workspace_dir: str, filename: str, data: dict) -> None:
@@ -73,11 +120,11 @@ def list_user_workspaces(workspace_base: str, user_id: str) -> list[dict]:
     if not os.path.exists(user_dir):
         return []
     for audio_id in os.listdir(user_dir):
-        meta_path = os.path.join(user_dir, audio_id, "metadata.json")
+        workspace_dir = os.path.join(user_dir, audio_id)
+        meta_path = os.path.join(workspace_dir, "metadata.json")
         if os.path.isfile(meta_path):
             try:
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
+                meta = load_metadata(workspace_dir)
                 meta["created_at"] = os.path.getmtime(meta_path)
                 history.append(meta)
             except Exception:

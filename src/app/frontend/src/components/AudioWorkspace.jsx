@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { generateTranscript, detectSpeakers, generateSummaryText, generateActionItems, getAudioResults, saveSpeakerMap, submitCorrection, getAudioFileUrl } from '../services/api'
 import { buildEditableTranscriptSegments, buildMergedTranscriptSegments, mergeTranscriptAndDiarization } from '../utils/mergeTranscript'
-import { Loader2, FileAudio, Clock, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
+import { Loader2, FileAudio, Clock, CheckCircle2, AlertCircle, RotateCcw, Pencil, Check, X } from 'lucide-react'
 import ActionItemTable from './ActionItemTable'
 import SpeakerTimeline from './SpeakerTimeline'
 import AudioPlayer from './AudioPlayer'
@@ -21,8 +21,37 @@ const formatDuration = (seconds) => {
   return `${mStr}:${sStr}:${msStr}`;
 }
 
-export const AudioWorkspace = ({ workspaceData, onReset }) => {
+export const AudioWorkspace = ({ workspaceData, onReset, onRename }) => {
   const [transcriptResult, setTranscriptResult] = useState(null)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [tempFilename, setTempFilename] = useState(workspaceData?.name || workspaceData?.filename || '')
+
+  useEffect(() => {
+    setTempFilename(workspaceData?.name || workspaceData?.filename || '')
+    setIsRenaming(false)
+  }, [workspaceData?.audio_id, workspaceData?.name, workspaceData?.filename])
+
+  const handleSaveRename = () => {
+    const trimmed = tempFilename.trim()
+    if (!trimmed) {
+      alert("Filename cannot be empty")
+      return
+    }
+    const currentName = workspaceData.name || workspaceData.filename
+    if (trimmed !== currentName) {
+      onRename(workspaceData.audio_id, trimmed)
+    }
+    setIsRenaming(false)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSaveRename()
+    } else if (e.key === 'Escape') {
+      setTempFilename(workspaceData?.name || workspaceData?.filename || '')
+      setIsRenaming(false)
+    }
+  }
   const [diarizationResult, setDiarizationResult] = useState(null)
   const [mergedTranscriptResult, setMergedTranscriptResult] = useState(null)
   const [summaryResult, setSummaryResult] = useState(null)
@@ -300,10 +329,49 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
       {/* Header Info */}
       <div className="bg-white rounded-xl shadow p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <FileAudio className="w-6 h-6 text-blue-600" />
-            {workspaceData.filename}
-          </h2>
+          <div className="flex items-center gap-2">
+            <FileAudio className="w-6 h-6 text-blue-600 flex-shrink-0" />
+            {isRenaming ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={tempFilename}
+                  onChange={(e) => setTempFilename(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  autoFocus
+                  className="text-2xl font-bold text-gray-900 border-b border-blue-500 focus:outline-none bg-transparent py-0 px-1 rounded-sm w-80"
+                />
+                <button
+                  onClick={handleSaveRename}
+                  className="p-1 text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                  title="Save Name"
+                >
+                  <Check className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => {
+                    setTempFilename(workspaceData.name || workspaceData.filename)
+                    setIsRenaming(false)
+                  }}
+                  className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                  title="Cancel"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2 group">
+                {workspaceData.name || workspaceData.filename}
+                <button
+                  onClick={() => setIsRenaming(true)}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ml-1"
+                  title="Rename Meeting"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </h2>
+            )}
+          </div>
           <p className="text-gray-500 mt-1 flex items-center gap-2">
             <Clock className="w-4 h-4" />
             Duration: {formatDuration(workspaceData.duration)}
@@ -322,6 +390,7 @@ export const AudioWorkspace = ({ workspaceData, onReset }) => {
         <AudioPlayer
           ref={audioPlayerRef}
           src={getAudioFileUrl(workspaceData.audio_id)}
+          duration={workspaceData.duration}
         />
       )}
 
