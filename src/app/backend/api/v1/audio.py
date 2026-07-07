@@ -7,15 +7,15 @@ import os
 import shutil
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Request
+from fastapi.responses import FileResponse, StreamingResponse
 from mutagen import File as MutagenFile
 
 from core.config import settings
 from core.dependencies import get_current_user_id
 from schemas.audio import ActionItemsRequest, RenameRequest
 from services import workspace_service
-from utils.audio_utils import validate_mime_type
+from utils.audio_utils import validate_mime_type, get_audio_duration
 from utils.config_loader import load_json_config
 
 router = APIRouter(prefix="/audio", tags=["Workspace"])
@@ -67,8 +67,7 @@ async def upload_audio(
                 detail=f"File content is not valid audio (detected: {detected_mime}). Please upload a real audio file.",
             )
 
-        audio_meta = MutagenFile(file_path)
-        duration = int(audio_meta.info.length) if audio_meta and audio_meta.info else 0
+        duration = int(get_audio_duration(file_path))
 
         metadata = {"audio_id": audio_id, "filename": file.filename, "duration": duration}
         with open(os.path.join(workspace_dir, "metadata.json"), "w", encoding="utf-8") as f:
@@ -111,20 +110,109 @@ async def get_audio_results(
     return results
 
 
+def range_generator(file_path: str, start: int, end: int, chunk_size: int = 8192):
+    """Yield chunks of a file for HTTP Range requests."""
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            chunk = f.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def parse_single_range_header(range_header: str, file_size: int) -> tuple[int, int]:
+    """Parse a single RFC 7233 byte range and return inclusive start/end offsets."""
+    if not range_header:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    unit, sep, range_set = range_header.strip().partition("=")
+    if sep != "=" or unit.strip().lower() != "bytes":
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    range_set = range_set.strip()
+    if not range_set or "," in range_set:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    start_str, dash, end_str = range_set.partition("-")
+    if dash != "-":
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    start_str = start_str.strip()
+    end_str = end_str.strip()
+
+    try:
+        if start_str and end_str:
+            start = int(start_str)
+            end = int(end_str)
+            if start < 0 or end < start:
+                raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+            if start >= file_size:
+                raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+            end = min(end, file_size - 1)
+            return start, end
+
+        if start_str and not end_str:
+            start = int(start_str)
+            if start < 0 or start >= file_size:
+                raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+            return start, file_size - 1
+
+        if not start_str and end_str:
+            suffix_length = int(end_str)
+            if suffix_length <= 0:
+                raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+            start = max(file_size - suffix_length, 0)
+            return start, file_size - 1
+    except ValueError:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+
 @router.get("/{audio_id}/file")
 async def get_audio_file(
     audio_id: str,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Serve the raw audio file for the frontend player."""
+    """Serve the raw audio file supporting HTTP Range requests for player seeking."""
     workspace_dir = workspace_service.require_workspace(audio_id, settings.WORKSPACE_BASE_DIR, user_id)
     meta = workspace_service.load_metadata(workspace_dir)
     file_path = os.path.join(workspace_dir, meta["filename"])
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Audio file not found")
+    
     ext = os.path.splitext(meta["filename"])[1].lower()
     media_type = MEDIA_TYPES.get(ext, "application/octet-stream")
-    return FileResponse(file_path, media_type=media_type, filename=meta["filename"])
+    file_size = os.path.getsize(file_path)
+    
+    range_header = request.headers.get("range")
+    if not range_header:
+        return FileResponse(
+            file_path,
+            media_type=media_type,
+            filename=meta["filename"],
+            headers={"Accept-Ranges": "bytes"}
+        )
+
+    start, end = parse_single_range_header(range_header, file_size)
+
+    content_length = end - start + 1
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(content_length),
+    }
+
+    return StreamingResponse(
+        range_generator(file_path, start, end),
+        status_code=206,
+        media_type=media_type,
+        headers=headers
+    )
 
 
 @router.delete("/{audio_id}")
@@ -147,16 +235,17 @@ async def rename_audio_workspace(
     payload: RenameRequest,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Update the display filename stored in metadata.json."""
+    """Update the display name in metadata.json without renaming the physical file on disk."""
     workspace_dir = workspace_service.require_workspace(audio_id, settings.WORKSPACE_BASE_DIR, user_id)
     meta = workspace_service.load_metadata(workspace_dir)
     new_name = payload.filename.strip()
     if not new_name:
-        raise HTTPException(status_code=400, detail="Filename cannot be empty")
-    meta["filename"] = new_name
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    meta["name"] = new_name
     with open(os.path.join(workspace_dir, "metadata.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False)
-    return {"success": True, "filename": new_name}
+    return {"success": True, "name": new_name, "filename": meta.get("filename")}
 
 
 @router.put("/{audio_id}/action-items")
