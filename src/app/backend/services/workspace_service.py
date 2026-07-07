@@ -5,10 +5,13 @@ Workspace structure: {WORKSPACE_BASE_DIR}/{user_id}/{audio_id}/
 No HTTP concerns here — pure filesystem operations.
 """
 import json
+import logging
 import os
 
 from fastapi import HTTPException
 from utils.audio_utils import get_audio_duration
+
+logger = logging.getLogger(__name__)
 
 
 def _workspace_path(workspace_base: str, user_id: str, audio_id: str) -> str:
@@ -80,8 +83,12 @@ def load_metadata(workspace_dir: str) -> dict:
         try:
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(meta, f, ensure_ascii=False)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Failed to persist self-healed metadata in %s: %s",
+                workspace_dir,
+                exc,
+            )
 
     return meta
 

@@ -123,6 +123,55 @@ def range_generator(file_path: str, start: int, end: int, chunk_size: int = 8192
             yield chunk
 
 
+def parse_single_range_header(range_header: str, file_size: int) -> tuple[int, int]:
+    """Parse a single RFC 7233 byte range and return inclusive start/end offsets."""
+    if not range_header:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    unit, sep, range_set = range_header.strip().partition("=")
+    if sep != "=" or unit.strip().lower() != "bytes":
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    range_set = range_set.strip()
+    if not range_set or "," in range_set:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    start_str, dash, end_str = range_set.partition("-")
+    if dash != "-":
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    start_str = start_str.strip()
+    end_str = end_str.strip()
+
+    try:
+        if start_str and end_str:
+            start = int(start_str)
+            end = int(end_str)
+            if start < 0 or end < start:
+                raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+            if start >= file_size:
+                raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+            end = min(end, file_size - 1)
+            return start, end
+
+        if start_str and not end_str:
+            start = int(start_str)
+            if start < 0 or start >= file_size:
+                raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+            return start, file_size - 1
+
+        if not start_str and end_str:
+            suffix_length = int(end_str)
+            if suffix_length <= 0:
+                raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+            start = max(file_size - suffix_length, 0)
+            return start, file_size - 1
+    except ValueError:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+
 @router.get("/{audio_id}/file")
 async def get_audio_file(
     audio_id: str,
@@ -149,23 +198,13 @@ async def get_audio_file(
             headers={"Accept-Ranges": "bytes"}
         )
 
-    try:
-        range_val = range_header.replace("bytes=", "").strip()
-        parts = range_val.split("-")
-        start = int(parts[0]) if parts[0] else 0
-        end = int(parts[1]) if len(parts) > 1 and parts[1] else file_size - 1
-    except Exception:
-        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
-
-    if start > end or start >= file_size or end >= file_size:
-        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+    start, end = parse_single_range_header(range_header, file_size)
 
     content_length = end - start + 1
     headers = {
         "Content-Range": f"bytes {start}-{end}/{file_size}",
         "Accept-Ranges": "bytes",
         "Content-Length": str(content_length),
-        "Content-Disposition": f'attachment; filename="{meta["filename"]}"'
     }
 
     return StreamingResponse(
