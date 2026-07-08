@@ -22,10 +22,10 @@ project-root/
 │   ├── app/
 │   │   ├── backend/        # FastAPI REST API (core source code)
 │   │   └── frontend/       # React/Vite web application
-│   └── notebooks/          # Inference notebook (Kaggle runtime)
+│   ├── notebooks/          # Inference notebook (Kaggle runtime)
+│   └── training/           # Training & evaluation Jupyter notebooks
 ├── data/                   # Data download scripts & README
-├── models/
-│   └── notebooks/          # Training & evaluation Jupyter notebooks
+├── models/                 # Model weights & download_checkpoints.py script
 ├── configs/                # NLP rules, thresholds (nlp_rules.json)
 ├── tests/                  # Unit tests & E2E pipeline test
 ├── docker-compose.yml      # Orchestrates backend + frontend containers
@@ -124,15 +124,15 @@ Upload the processed datasets and the following notebooks to your Kaggle session
 
 | Notebook | Task | Location |
 |---|---|---|
-| `Train_ASR.ipynb` | Fine-tune Whisper on meeting audio | `models/notebooks/` |
-| `Train_Diarizaion.ipynb` | Fine-tune Pyannote Diarization | `models/notebooks/` |
+| `Train_ASR.ipynb` | Fine-tune Whisper on meeting audio | `src/training/` |
+| `Train_Diarizaion.ipynb` | Fine-tune Pyannote Diarization | `src/training/` |
 
 ### Step 3: Evaluate
 
 | Notebook | Metric | Location |
 |---|---|---|
-| `Evaluate_ASR.ipynb` | WER on LibriSpeech test-clean / test-other | `models/notebooks/` |
-| `Evaluate_Diarizaion.ipynb` | DER on VoxConverse | `models/notebooks/` |
+| `Evaluate_ASR.ipynb` | WER on LibriSpeech test-clean / test-other | `src/training/` |
+| `Evaluate_Diarizaion.ipynb` | DER on VoxConverse | `src/training/` |
 
 See `models/README.md` for expected benchmark results and checkpoint download instructions.
 

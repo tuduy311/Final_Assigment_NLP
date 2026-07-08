@@ -2,7 +2,7 @@
 
 This directory contains the Jupyter Notebooks used for training and evaluating our Speech-to-Text (ASR) and Speaker Diarization models.
 
-> **Execution Environment:** All notebook files (`.ipynb` files inside `models/notebooks/`) are designed and optimized to run on **Google Colab** with a **T4 GPU** (or better) runtime.
+> **Execution Environment:** All notebook files (`.ipynb` files inside `src/training/`) are designed and optimized to run on **Google Colab** with a **T4 GPU** (or better) runtime.
 
 ## Checkpoint Links
 
